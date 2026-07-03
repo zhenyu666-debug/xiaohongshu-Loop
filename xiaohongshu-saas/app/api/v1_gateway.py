@@ -1,24 +1,18 @@
 """HTTP gateway router for upstream services (pbp-api, lakehouse-api).
 
-Forwards /api/v1/{pbp,lakehouse}/* to upstream URLs configured in
-`Settings.pbp_api_url` / `Settings.lakehouse_api_url`. Each upstream is
-probed concurrently on `/api/v1/health/all` so the GUI's HealthBadge can
-surface per-service status.
-
-The gateway is intentionally thin: it does not cache, validate, or
-transform payloads beyond injecting CORS-friendly error envelopes.
-Authentication / rate-limiting belong to the upstream services.
+GET  /api/v1/{short}/{path:path}      -> proxies to upstream
+GET  /api/v1/health/all               -> aggregate self + upstreams health
+GET  /api/v1/cache/clear              -> clear cached upstream responses (admin)
 """
 from __future__ import annotations
 
-import asyncio
 import time
 from typing import Any
 
 import httpx
 from fastapi import APIRouter, HTTPException, Request
-from fastapi.responses import JSONResponse
 
+from app.core.cache import health_cache
 from app.core.config import settings
 
 router = APIRouter(prefix="/api/v1", tags=["gateway"])
@@ -44,7 +38,9 @@ async def _proxy(short: str, request: Request, path: str) -> Any:
             r = await client.request(request.method, target, content=body)
     except httpx.RequestError as e:
         raise HTTPException(status_code=502, detail=f"upstream {short} unreachable: {e!s}") from e
-    return JSONResponse(content=r.json(), status_code=r.status_code, headers={"x-upstream": short})
+    if r.status_code >= 400:
+        raise HTTPException(status_code=r.status_code, detail=r.text)
+    return r.json() if r.headers.get("content-type", "").startswith("application/json") else r.text
 
 
 async def _probe_one(client: httpx.AsyncClient, name: str, base: str, health_path: str) -> dict:
@@ -54,39 +50,60 @@ async def _probe_one(client: httpx.AsyncClient, name: str, base: str, health_pat
         latency = round((time.perf_counter() - started) * 1000, 1)
         return {"name": name, "status": "up" if r.is_success else "down", "latency_ms": latency}
     except httpx.RequestError:
-        return {"name": name, "status": "down"}
+        return {"name": name, "status": "down", "latency_ms": None}
 
 
 @router.get("/health/all")
 async def health_all() -> dict:
-    """Aggregate health for self + upstream services."""
+    """Aggregate health for self + upstream services (3s TTL cache)."""
+    cached = health_cache.get("health/all")
+    if cached:
+        cached["cache_hit"] = True
+        return cached
     tasks = []
     async with httpx.AsyncClient() as client:
         # self
         tasks.append(_probe_one(client, "xhs-saas", f"http://localhost:{settings.app_port}", "/api/healthz"))
         for short, (base, _mount) in _UPSTREAM_PATHS.items():
             tasks.append(_probe_one(client, short, base, "/healthz"))
-        results = await asyncio.gather(*tasks, return_exceptions=False)
-    up = sum(1 for r in results if r["status"] == "up")
-    overall = "ok" if up == len(results) else ("degraded" if up > 0 else "down")
-    return {"status": overall, "services": results}
+        services = await __await_gather(tasks)
+    statuses = {s["status"] for s in services}
+    overall = "ok" if statuses == {"up"} else ("down" if statuses == {"down"} else "degraded")
+    out = {"status": overall, "services": services, "cache_hit": False}
+    health_cache.set("health/all", out)
+    return out
 
 
-# Catch-all proxy: /api/v1/{short}/{path:path}
-@router.api_route(
-    "/{short}/{path:path}",
-    methods=["GET", "POST", "PUT", "PATCH", "DELETE"],
-    include_in_schema=False,
-)
-async def catch_all(short: str, path: str, request: Request) -> Any:
-    return await _proxy(short, request, path)
+async def __await_gather(coros):
+    import asyncio
+    return await asyncio.gather(*coros)
 
 
-# Root-level short cut (e.g. /api/v1/pbp/healthz)
-@router.api_route(
-    "/{short}",
-    methods=["GET", "POST", "PUT", "PATCH", "DELETE"],
-    include_in_schema=False,
-)
-async def catch_short(short: str, request: Request) -> Any:
-    return await _proxy(short, request, "")
+@router.post("/cache/clear")
+async def cache_clear() -> dict:
+    """Clear all gateway caches. Useful for manual upstream refresh."""
+    health_cache.invalidate()
+    return {"cleared": True, "remaining_size": health_cache.size()}
+
+
+@router.get("/cache/stats")
+async def cache_stats() -> dict:
+    return {
+        "health_cache_size": health_cache.size(),
+        "health_cache_ttl_seconds": health_cache._ttl,
+    }
+
+
+# Catch-all proxy routes registered LAST so /health/all etc. resolve first.
+def _make_proxy_handler(short: str):
+    async def _handler(request: Request, path: str = "") -> Any:
+        return await _proxy(short, request, path)
+    return _handler
+
+
+for short_name in _UPSTREAM_PATHS:
+    router.add_api_route(
+        f"/{short_name}/{{path:path}}",
+        _make_proxy_handler(short_name),
+        methods=["GET", "POST", "PUT", "PATCH", "DELETE"],
+    )
