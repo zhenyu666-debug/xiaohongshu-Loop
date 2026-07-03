@@ -6,15 +6,17 @@
 > **命名约定**：本仓库本文件叫 `LOOP-STATE.md`（不带 `xhs` 后缀）。
 > 旧的 `LOOP-STATExhs.md` 是上一个 session 的工作日志，保留作为历史档案，**不是 loop 状态源**。
 
-Last updated: 2026-07-03 21:26 UTC+8 (本次 run)
-Session: loop boot 第三轮 — 修 auto-fix.yml 真实 bug
+Last updated: 2026-07-03 22:03 UTC+8 (本次 run)
+Session: loop boot 第四轮 — 修 auto-fix.yml pytest cwd 错乱
 
 ## 验证证据 (item 完成必须基于此)
 
-- HEAD SHA: `080d8031e4ef2c7a58577e2a01a29dafc7348a4a` (`main`)
+- HEAD SHA: `91a166df805f0ce52bdd435b889264cf6fbc1f5d` (`main`)
 - 远端 SHA: 同上（已同步）
-- 本 session 推到 main 的 commits: `c453420` + `9854e11` + `c6165af` + `2c75ceb` + `080d803` (diff size bug fix)
-- 关键发现: **auto-fix.yml diff size 限制本意是防大改, 但只算 insert 不算 delete** → agent 可删任意多文件
+- 本 session 推到 main 的 commits: `c453420` + `9854e11` + `c6165af` + `2c75ceb` + `080d803` + `91a166d` (cwd 错乱 fix)
+- 关键发现:
+  - **item 6 (commit 080d803)**: auto-fix.yml diff size 漏算 deletion, 改用 --numstat 累加 ins+del
+  - **item 7 (commit 91a166d)**: auto-fix.yml Run auto-fix loop step 没设 cwd, pytest 找不到 tests/ 卡死
 - 工作区状态: 7 个未跟踪 .py 临时脚本（见 item 3）
 - 主分支 commits: 见 `git log --oneline -20`
 - 工作区状态: 7 个未跟踪 .py 临时脚本（见 item 3）
@@ -111,14 +113,34 @@ Session: loop boot 第三轮 — 修 auto-fix.yml 真实 bug
   - 任何"基于 --stat 的统计限制"应该用 --numstat + awk 累加, 或 `git diff --shortstat` 的数字
   - Git Bash 在 `C:/Program Files/Git/bin/bash.exe` 下调用 awk 有效 (系统 `bash.exe` 是 WSL, 没 awk)
 
+### item 7: 修 auto-fix.yml Run auto-fix loop step 缺 working-directory
+- **status**: done
+- **做了什么**:
+  - 发现 `Run auto-fix loop` step (line 89-100) 没设 `working-directory`, 默认仓库根
+  - `TEST_CMD="pytest -q tests"` 在仓库根跑: pytest 找不到 tests/, 卡在 rootdir detection 30s timeout
+  - 设计 fix: Run auto-fix loop 切到 xiaohongshu-saas/, 后续 git 操作 step 切回仓库根
+- **结果** (tempdir 模拟):
+  - `pytest -q tests` 仓库根: ERROR file not found, rc=4 ❌
+  - `pytest -q tests` xiaohongshu-saas: 22 passed ✓
+  - `git diff :!xiaohongshu-saas` 仓库根: 排除正确 ✓
+  - `git diff :!xiaohongshu-saas` 子目录 cwd: 排除失效 ⚠️ (path 相对 cwd 解释)
+- **改动**: 6 处 working-directory, 1 处 git add path 限定
+  - `Run auto-fix loop`: `working-directory: xiaohongshu-saas`
+  - `Inspect agent diff`, `Push agent fix`, `Trigger CI re-verification`, `Wait + verify CI re-run`, `Revert agent fix`: `working-directory: .`
+  - `git add -A` → `git add -A xiaohongshu-saas` (保险)
+- **Commit**: `91a166df805f0ce52bdd435b889264cf6fbc1f5d` on main
+- **下次注意**:
+  - GitHub Actions step 级 cwd 互不影响, 每个 step 自己设
+  - 任何 step 跑测试 / 跑 build 都必须显式设 cwd, 不能假设继承
+  - `git diff :!path` 是 repo-root 相对 path, 子目录 cwd 下会错
+
 ## Needs-me list（agent 没法决定的事）
 
-1. **7 个未跟踪 .py 文件去留** (item 3) — `check_*.py` (4) + `qcc_scraper_*.py` (3)
-   - 建议 trash 4 个 check_*（临时调试，硬编码仓库外路径）
-   - 建议 mv 3 个 qcc_scraper 到 qcc/（被 .gitignore ignore，不 commit）
-   - 或全部 trash
-   - **任何 `rm` / `trash` / `mv` 是 destructive → 需用户拍板**
-
+1. **8 个未跟踪文件去留** (item 3 + 新增)
+   - `check_*.py` × 4: 临时调试, 硬编码仓库外路径
+   - `qcc_scraper_*.py` × 3: 企查查爬虫
+   - **`repro_test.sh`**: item 7 验证时遗留的 71B 临时脚本, 内容是 `python -m pytest -q tests`, **纯垃圾**
+   - 建议: 全部 trash, 或 trash 7 个 + mv qcc_scraper 到 qcc/ (被 ignore)
 2. **demo.json + demo_*.jpg 是否 push** (item 4) — 见 item 4 decision matrix
    - (A) 改 .gitignore 精细化 + force-add
    - (B) 维持现状，本地 demo 模式
