@@ -51,11 +51,9 @@ build/
 target/
 logs/
 data/
-data-lakehouse/
 donor-number-screener/
 donor-java-screener/
 donor-screener-java/
-donor-screener-pbp/
 flyasiana_capture/
 front/
 li_s_additives/
