@@ -136,15 +136,29 @@ Session: loop boot 第四轮 — 修 auto-fix.yml pytest cwd 错乱
 
 ## Needs-me list（agent 没法决定的事）
 
-1. **8 个未跟踪文件去留** (item 3 + 新增)
-   - `check_*.py` × 4: 临时调试, 硬编码仓库外路径
-   - `qcc_scraper_*.py` × 3: 企查查爬虫
-   - **`repro_test.sh`**: item 7 验证时遗留的 71B 临时脚本, 内容是 `python -m pytest -q tests`, **纯垃圾**
-   - 建议: 全部 trash, 或 trash 7 个 + mv qcc_scraper 到 qcc/ (被 ignore)
-2. **demo.json + demo_*.jpg 是否 push** (item 4) — 见 item 4 decision matrix
+### ~~item 3 + repro_test.sh: 8 个未跟踪垃圾文件~~ → ✅ DONE (用户"quanbu" 拍板: 全部)
+- **2026-07-04 02:35 UTC+8** 用户命令"quanbu"=全部, agent 全部 trash 到 Windows Recycle Bin
+- 实现: custom helper `_SendTo-RecycleBin.ps1` 用 `[Microsoft.VisualBasic.FileIO.FileSystem]::DeleteFile(..., SendToRecycleBin)`
+- 验证: 8 个文件全 `exists=False`, 8 个全在 Recycle Bin (30 天可恢复)
+- 操作清单:
+  - check_cookie.py, check_db.py, check_encoding.py, check_img.py
+  - qcc_scraper_http.py, qcc_scraper_pw.py, qcc_scraper_standalone.py
+  - repro_test.sh
+
+### 仍然 pending:
+
+1. **demo.json + demo_*.jpg 是否 push** (item 4)
    - (A) 改 .gitignore 精细化 + force-add
    - (B) 维持现状，本地 demo 模式
    - (C) 删掉本地 demo 文件
+
+2. **`_SendTo-RecycleBin.ps1` 去留** (新)
+   - 是 trash 8 个文件用的 PowerShell helper (没 `trash` CLI 时替代方案)
+   - 现在仓库根 untracked
+   - 选项:
+     - (a) **mv 到 `scripts/`** + 改名 `trash.ps1` — 工具化, match `scripts/` 已有 pattern (推荐)
+     - (b) **trash 进回收站** — 用一次就丢
+     - (c) **commit 进 repo** — 文档化为 agent 工具
 
 ## 测试命令（参考 `LOOP-STATExhs.md` line 88-116）
 
