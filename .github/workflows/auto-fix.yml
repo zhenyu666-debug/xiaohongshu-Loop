@@ -89,6 +89,9 @@ jobs:
       - name: Run auto-fix loop
         if: steps.guard.outputs.skipping != 'true'
         id: fix
+        # 必须切到 xiaohongshu-saas/ 因为 TEST_CMD="pytest -q tests" 要找 tests/ 目录
+        # 没这一行, pytest 跑时会卡在 rootdir detection 上直到 timeout
+        working-directory: xiaohongshu-saas
         env:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
           MAX_ITER: "10"
@@ -102,8 +105,11 @@ jobs:
       - name: Inspect agent diff
         if: steps.guard.outputs.skipping != 'true'
         id: inspect
+        # git add / diff 必须用仓库根 cwd, 才能用 `:!xiaohongshu-saas` 这种 path
+        # (子目录 cwd 下 `:!path` 会相对子目录解释, 排除规则失效)
+        working-directory: .
         run: |
-          git add -A
+          git add -A xiaohongshu-saas
           if git diff --cached --quiet -- xiaohongshu-saas; then
             echo "No xiaohongshu-saas changes, exiting"
             echo "has_changes=false" >> "$GITHUB_OUTPUT"
@@ -137,6 +143,8 @@ jobs:
 
       - name: Push agent fix to main
         if: steps.inspect.outputs.has_changes == 'true'
+        # push 必须在仓库根 cwd, git push origin HEAD:main 引用的是 repo 路径
+        working-directory: .
         run: |
           git config user.name "xhs-saas-bot"
           git config user.email "agent@local"
@@ -145,6 +153,7 @@ jobs:
 
       - name: Trigger CI re-verification
         if: steps.inspect.outputs.has_changes == 'true'
+        working-directory: .
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
@@ -154,6 +163,7 @@ jobs:
 
       - name: Wait + verify CI re-run
         if: steps.inspect.outputs.has_changes == 'true'
+        working-directory: .
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
@@ -183,6 +193,8 @@ jobs:
 
       - name: Revert agent fix on CI re-failure
         if: failure() && steps.inspect.outputs.has_changes == 'true'
+        # revert push 也必须在仓库根 cwd
+        working-directory: .
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
