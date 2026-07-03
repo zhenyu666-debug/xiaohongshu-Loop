@@ -80,8 +80,18 @@ bash scripts/auto-fix-tests.sh
 
 ```bash
 bash scripts/auto-fix-tests-npm.sh
-# 等价于: MAX_ITER=10 BUDGET=5 TEST_CMD="npm test --silent"
+# 等价于: MAX_ITER=10 BUDGET=5 TEST_CMD="npm test --silent -- --watchAll=false"
+# 脚本会额外 export CI=1, 让 jest/vitest/cypress/playwright 拒绝 watch 模式。
 ```
+
+### npm watch 模式陷阱
+
+npm 测试常自带 watch 模式（`jest --watchAll`、`vitest --watch`、Cypress 的 `run --watch`），默认会等 stdin 永远不退出——**外层 loop 会在第二轮卡死**。脚本做了两件事防这个：
+
+1. **强制 `export CI=1`** — jest/vitest/cypress/playwright 全认这个环境变量，会自动拒绝 watch
+2. **默认 `TEST_CMD` 透传 `--watchAll=false`** — 双保险，关掉 jest 残余 watch
+
+用户自定义 `TEST_CMD` 时无需再加 `CI=1` 前缀（脚本已 export）。
 
 ### 自定义轮数 / 预算
 
@@ -96,13 +106,16 @@ MAX_ITER=20 BUDGET=10 bash scripts/auto-fix-tests-npm.sh
 # Python 跑特定子目录
 TEST_CMD="pytest -q xiaohongshu-saas/tests" bash scripts/auto-fix-tests.sh
 
-# npm 跑特定子项目
-TEST_CMD="npm test --silent --workspaces=false" bash scripts/auto-fix-tests-npm.sh
+# npm 跑特定子项目 (CI=1 已由脚本 export, 无需重复)
+TEST_CMD="npm test --silent -- --watchAll=false --testPathPattern=core" bash scripts/auto-fix-tests-npm.sh
 
-# 其他生态
+# 其他生态 (CI=1 不影响这些, pytest/cargo/go 没 watch 模式)
 TEST_CMD="cargo test --quiet" bash scripts/auto-fix-tests.sh
 TEST_CMD="go test ./..." bash scripts/auto-fix-tests.sh
-TEST_CMD="pnpm test --silent" bash scripts/auto-fix-tests-npm.sh
+
+# pnpm / yarn — 透传 watchAll=false 即可
+TEST_CMD="pnpm test --silent -- --watchAll=false" bash scripts/auto-fix-tests-npm.sh
+TEST_CMD="yarn test --silent --watchAll=false" bash scripts/auto-fix-tests-npm.sh
 ```
 
 ### npm 版 prompt 的微小差别

@@ -12,6 +12,10 @@
 #   3. set -euo pipefail + MAX_ITER + --max-budget-usd 三层硬上限防失控
 #   4. claude -p 失败时 continue, 不让 set -e 终止整个 loop
 #
+# ⚠️ npm 测试常自带 watch 模式 (jest --watchAll, vitest --watch, cypress run --watch),
+#    会让外层 loop 永远卡住。脚本默认强制 export CI=1, 让 jest/vitest/cypress/playwright
+#    拒绝 watch 模式一次性跑完。CI=1 已是 npm 生态约定, 不影响用户透传的 TEST_CMD。
+#
 # 用法:
 #   bash scripts/auto-fix-tests-npm.sh               # 默认 10 轮, 单轮 $5
 #   MAX_ITER=20 BUDGET=10 bash scripts/auto-fix-tests-npm.sh
@@ -19,13 +23,22 @@
 # 环境变量:
 #   MAX_ITER     最大循环轮数 (默认 10)
 #   BUDGET       单轮 agent 美元预算 (默认 5)
-#   TEST_CMD     跑测试的命令 (默认: npm test --silent)
+#   TEST_CMD     跑测试的命令 (默认: npm test --silent -- --watchAll=false)
+#                - 默认透传 -- --watchAll=false 给 jest, 强制非交互
+#                - vitest 用户: TEST_CMD="vitest run"
+#                - cypress 用户: TEST_CMD="cypress run"
+#                - pnpm 用户: TEST_CMD="pnpm test --silent -- --watchAll=false"
+#                自定义 TEST_CMD 时无需再加 CI=1 前缀 (脚本已 export)。
 
 set -euo pipefail
 
 MAX_ITER="${MAX_ITER:-10}"
 BUDGET="${BUDGET:-5}"
-TEST_CMD="${TEST_CMD:-npm test --silent}"
+TEST_CMD="${TEST_CMD:-npm test --silent -- --watchAll=false}"
+
+# 强制 CI=1 — jest/vitest/cypress/playwright 都认这个环境变量拒绝 watch 模式。
+# 用户自定义 TEST_CMD 时也会被这个 CI=1 包装, 不需要再手动加。
+export CI=1
 
 i=0
 echo "auto-fix-tests-npm: TEST_CMD='$TEST_CMD' MAX_ITER=$MAX_ITER BUDGET=\$$BUDGET"
