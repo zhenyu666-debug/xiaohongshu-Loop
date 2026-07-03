@@ -1,0 +1,1 @@
+"""Make `app.channels.xiaohongshu` a package."""

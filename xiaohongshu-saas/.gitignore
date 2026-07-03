@@ -1,0 +1,46 @@
+# Byte-compiled / cache
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+
+# Virtual envs
+.venv/
+venv/
+env/
+
+# Local data / secrets
+data/
+*.sqlite
+*.sqlite3
+*.db
+logs/
+*.log
+.env
+.auth/
+cookies/
+sessions/
+
+# Editors / OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# Build artifacts
+dist/
+build/
+*.egg-info/
+htmlcov/
+.coverage
+
+# Playwright
+.playwright/
+playwright/.cache/
+
+# Frontend
+web/static/node_modules/
+web/static/dist/

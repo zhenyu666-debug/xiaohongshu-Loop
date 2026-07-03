@@ -1,0 +1,41 @@
+version: "3.9"
+
+services:
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+
+  web:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile
+    restart: unless-stopped
+    env_file: ../.env
+    environment:
+      REDIS_URL: redis://redis:6379/0
+      DATABASE_URL: sqlite+aiosqlite:////app/data/xhs_saas.db
+    volumes:
+      - ../data:/app/data
+      - ../logs:/app/logs
+    ports:
+      - "8080:8080"
+    depends_on:
+      - redis
+
+  worker:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile
+    restart: unless-stopped
+    env_file: ../.env
+    environment:
+      REDIS_URL: redis://redis:6379/0
+      DATABASE_URL: sqlite+aiosqlite:////app/data/xhs_saas.db
+    volumes:
+      - ../data:/app/data
+      - ../logs:/app/logs
+    command: celery -A app.workers.celery_app worker -l info
+    depends_on:
+      - redis

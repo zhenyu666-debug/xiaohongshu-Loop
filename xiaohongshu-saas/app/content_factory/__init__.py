@@ -1,0 +1,1 @@
+"""Make `app.content_factory` a package."""

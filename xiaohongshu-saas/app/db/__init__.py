@@ -1,0 +1,1 @@
+"""Make `app.db` a package."""
