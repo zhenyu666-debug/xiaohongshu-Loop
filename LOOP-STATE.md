@@ -6,13 +6,15 @@
 > **命名约定**：本仓库本文件叫 `LOOP-STATE.md`（不带 `xhs` 后缀）。
 > 旧的 `LOOP-STATExhs.md` 是上一个 session 的工作日志，保留作为历史档案，**不是 loop 状态源**。
 
-Last updated: 2026-07-03 20:54 UTC+8
-Session: loop boot — 验证 LOOP-STATExhs.md 残留清单
+Last updated: 2026-07-03 21:18 UTC+8 (本次 run)
+Session: loop boot 第二轮 — 验证 LOOP-STATExhs.md 残留清单
 
 ## 验证证据 (item 完成必须基于此)
 
-- HEAD SHA: `c4534209feb4fcc3a6455c3d797d8186ba358690` (`main`)
+- HEAD SHA: `9854e110cb08b9ca215d0099dee61e4c33ec0bdc` (`main`)
 - 远端 SHA: 同上（已同步）
+- 本 session 推到 main 的 commits: `c453420` (LOOP-STATE.md 初始), `9854e11` (LOOP-STATE SHA evidence 修正)
+- 工作区状态: 7 个未跟踪 .py 临时脚本（见 item 3）
 - 主分支 commits: 见 `git log --oneline -20`
 - 工作区状态: 7 个未跟踪 .py 临时脚本（见 item 3）
 - 旧的 `LOOP-STATExhs.md` line 118-134 列的"未 push 改动" 8/10 实际**已在 HEAD**（早在 `7e78510` 初始 commit 一次性带上），仅 2/10（demo.json + demo_*.jpg）被 `xiaohongshu-saas/.gitignore` 的 `data/` 规则挡住从未进 git。
@@ -74,6 +76,22 @@ Session: loop boot — 验证 LOOP-STATExhs.md 残留清单
   - (B) 维持现状，demo 数据**只本地用**（要求用户每次自己 `python -m scripts.seed_demo`）
   - (C) 删掉这些本地 demo 文件（用户可能不想用 demo）
 - **风险**: 改 `.gitignore` + force-add 之前被故意 ignore 的文件 = "destructive / pushing things" → needs me
+
+### item 5: 跑 pytest -q tests 看真实测试状态（evidence-based 探索）
+- **status**: done
+- **做了什么**:
+  - `cd xiaohongshu-saas && python -m pytest -q tests`
+  - 不需要 `pip install -e ".[dev]"`（pytest 9.1.0 系统已装, 其他依赖 import 时才校验）
+- **结果**:
+  - `rc=0`, `22 passed in 2.16s`
+  - 测试目录 5 个文件: `test_douyin_stub.py`, `test_factory.py`, `test_metrics.py`, `test_risk.py`, `test_schemas.py`
+- **含义**:
+  - **CI 绿的（本地环境）** → auto-fix workflow 现在没有触发理由，**当下没必要跑**
+  - 本地绿 ≠ GitHub Actions CI 绿（环境变量, secret, OS 可能不同）
+  - 真正的 CI 是否绿要看 `https://github.com/zhenyu666-debug/xiaohongshu-Loop/actions`
+- **下次注意**:
+  - 调试入口: `cd xiaohongshu-saas && python -m pytest tests/test_<name>.py -v`
+  - 加新测试要"Match the patterns" (`test_*.py` 函数名 `test_*`)
 
 ## Needs-me list（agent 没法决定的事）
 
