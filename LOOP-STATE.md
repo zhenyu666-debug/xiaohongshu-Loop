@@ -11,9 +11,9 @@ Session: loop boot 第二轮 — 验证 LOOP-STATExhs.md 残留清单
 
 ## 验证证据 (item 完成必须基于此)
 
-- HEAD SHA: `9854e110cb08b9ca215d0099dee61e4c33ec0bdc` (`main`)
+- HEAD SHA: `c6165af8218c5af15f99357bd62640e826b19522` (`main`)
 - 远端 SHA: 同上（已同步）
-- 本 session 推到 main 的 commits: `c453420` (LOOP-STATE.md 初始), `9854e11` (LOOP-STATE SHA evidence 修正)
+- 本 session 推到 main 的 commits: `c453420` (LOOP-STATE.md 初始), `9854e11` (LOOP-STATE SHA evidence 修正), `c6165af` (item 5 evidence + 本地 pytest 结果)
 - 工作区状态: 7 个未跟踪 .py 临时脚本（见 item 3）
 - 主分支 commits: 见 `git log --oneline -20`
 - 工作区状态: 7 个未跟踪 .py 临时脚本（见 item 3）
@@ -117,6 +117,8 @@ python -m pytest -q tests
 
 1. 读本文件 `LOOP-STATE.md` first
 2. 检查 HEAD SHA 和本文件记录的 SHA 一致 → 没人偷偷 push
+   - **注意**: LOOP-STATE.md 改一次 → commit 一次 → HEAD 变一次 → 段本身过时
+   - **本文件证据段只反映最近一次 commit 前的状态**; 完整 git log 在 `git log --oneline -20`
 3. 看 item 列表，挑 `pending` 的干，跳过 `done` 和 `needs me`
 4. 每次完成 item 立即回写本文件
 5. **没 GOAL 的 loop 不会自动跑** — 用户给了空的 loop 模板让我自由探索，agent 已尽力做完能做的 evidence 验证，剩下的 decision-requiring 全归 needs-me
