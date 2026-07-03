@@ -1,6 +1,15 @@
-# auto-fix-tests.sh
+# auto-fix-tests.sh / auto-fix-tests-npm.sh
 
 > 自动让 Claude agent 修失败的测试，套娃式 loop 直到绿 / 烧光预算。
+
+## 两个语言各一份
+
+| 脚本 | 默认测试命令 | 适用项目 |
+|---|---|---|
+| `scripts/auto-fix-tests.sh` | `pytest -q` | Python（xiaohongshu-saas 等） |
+| `scripts/auto-fix-tests-npm.sh` | `npm test --silent` | Node.js / 前端 |
+
+两份脚本结构完全对称，只是默认值不同。内部逻辑（loop / 预算 / prompt 约束）共用同一套设计。
 
 ## 一句话定位
 
@@ -60,31 +69,45 @@ fi
 
 ## 用法
 
-### 默认参数
+### 默认参数（pytest 版）
 
 ```bash
 bash scripts/auto-fix-tests.sh
 # 等价于: MAX_ITER=10 BUDGET=5 TEST_CMD="pytest -q"
 ```
 
+### 默认参数（npm 版）
+
+```bash
+bash scripts/auto-fix-tests-npm.sh
+# 等价于: MAX_ITER=10 BUDGET=5 TEST_CMD="npm test --silent"
+```
+
 ### 自定义轮数 / 预算
 
 ```bash
 MAX_ITER=20 BUDGET=10 bash scripts/auto-fix-tests.sh
+MAX_ITER=20 BUDGET=10 bash scripts/auto-fix-tests-npm.sh
 ```
 
 ### 跑别的测试命令
 
 ```bash
-# npm 项目
-TEST_CMD="npm test --silent" bash scripts/auto-fix-tests.sh
-
-# 跑特定子目录
+# Python 跑特定子目录
 TEST_CMD="pytest -q xiaohongshu-saas/tests" bash scripts/auto-fix-tests.sh
 
-# cargo
+# npm 跑特定子项目
+TEST_CMD="npm test --silent --workspaces=false" bash scripts/auto-fix-tests-npm.sh
+
+# 其他生态
 TEST_CMD="cargo test --quiet" bash scripts/auto-fix-tests.sh
+TEST_CMD="go test ./..." bash scripts/auto-fix-tests.sh
+TEST_CMD="pnpm test --silent" bash scripts/auto-fix-tests-npm.sh
 ```
+
+### npm 版 prompt 的微小差别
+
+npm 版第三条约束写成 `no skip / .skip() / xit / delete`——多列 `.skip()` 和 `xit`（Jest 常用别名），更精确地封死"假绿"路径。pytest 版则是 `no skip / mock / delete`。
 
 ## 实际跑起来长这样
 
@@ -162,5 +185,6 @@ jobs:
 
 ## 相关文件
 
-- 脚本本体: `scripts/auto-fix-tests.sh`
+- 脚本本体: `scripts/auto-fix-tests.sh`（Python / pytest）
+- 脚本本体: `scripts/auto-fix-tests-npm.sh`（Node.js / npm）
 - 灵感来源: Anthropic 内部 ralph-loop 模式
