@@ -30,12 +30,12 @@ def bootstrap() -> None:
     """Auto-register channels based on settings."""
     from app.core.config import settings
     from app.channels.xiaohongshu.adapter import XiaohongshuAdapter
+    from app.channels.douyin.adapter import DouyinAdapter
 
     if settings.enable_xiaohongshu:
         register(XiaohongshuAdapter())
     if settings.enable_douyin:
         try:
-            from app.channels.douyin.adapter import DouyinAdapter  # type: ignore
             register(DouyinAdapter())
-        except ImportError:
-            logger.warning("Douyin adapter not yet implemented")
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("Douyin adapter failed to register: {}", exc)
