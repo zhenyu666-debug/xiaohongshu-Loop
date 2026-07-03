@@ -7,6 +7,7 @@ import Dashboard from "@/pages/Dashboard";
 import Accounts from "@/pages/Accounts";
 import Tasks from "@/pages/Tasks";
 import AnalyticsOverview from "@/pages/AnalyticsOverview";
+import AlertsCenter from "@/pages/AlertsCenter";
 import Settings from "@/pages/Settings";
 
 function wrap(node: React.ReactNode) {
@@ -34,6 +35,10 @@ describe("pages render", () => {
   it("AnalyticsOverview", () => {
     render(wrap(<AnalyticsOverview />));
     expect(screen.getByText(/今日概览/)).toBeInTheDocument();
+  });
+  it("AlertsCenter", () => {
+    render(wrap(<AlertsCenter />));
+    expect(screen.getByText(/告警中心/)).toBeInTheDocument();
   });
   it("Settings", () => {
     render(wrap(<Settings />));

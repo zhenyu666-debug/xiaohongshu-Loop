@@ -10,6 +10,7 @@ import AnalyticsOverview from "@/pages/AnalyticsOverview";
 import AnalyticsPvUv from "@/pages/AnalyticsPvUv";
 import AnalyticsFunnel from "@/pages/AnalyticsFunnel";
 import AnalyticsTopItems from "@/pages/AnalyticsTopItems";
+import AlertsCenter from "@/pages/AlertsCenter";
 import Settings from "@/pages/Settings";
 
 export const router = createBrowserRouter(
@@ -28,6 +29,7 @@ export const router = createBrowserRouter(
         { path: "analytics/pv-uv", element: <AnalyticsPvUv /> },
         { path: "analytics/funnel", element: <AnalyticsFunnel /> },
         { path: "analytics/top-items", element: <AnalyticsTopItems /> },
+        { path: "alerts", element: <AlertsCenter /> },
         { path: "settings", element: <Settings /> },
         { path: "*", element: <Navigate to="/" replace /> },
       ],

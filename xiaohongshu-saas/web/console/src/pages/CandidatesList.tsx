@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
-import { Search, BarChart3 } from "lucide-react";
+import { Search, BarChart3, Download } from "lucide-react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -10,6 +10,7 @@ import { Input } from "@/components/ui/input";
 import { Table, TableHeader, TableHead, TableBody, TableRow, TableCell } from "@/components/ui/table";
 import api from "@/lib/api";
 import { useDebounce } from "@/hooks/useDebounce";
+import { useVirtualizedList } from "@/hooks/useVirtualizedList";
 
 interface CandidateListItem {
   id: number;
@@ -26,6 +27,8 @@ interface ListResp {
   items: CandidateListItem[];
 }
 
+const VIRTUALIZE_THRESHOLD = 200;
+
 export default function CandidatesList() {
   const [search, setSearch] = useState("");
   const [scoreMin, setScoreMin] = useState<string>("");
@@ -35,7 +38,7 @@ export default function CandidatesList() {
   const { data, isLoading, isError } = useQuery({
     queryKey: ["candidates", "list", scoreMin, scoreMax],
     queryFn: async () => {
-      const params: Record<string, string | number> = { limit: 200 };
+      const params: Record<string, string | number> = { limit: 1000 };
       if (scoreMin) params.score_min = parseFloat(scoreMin);
       if (scoreMax) params.score_max = parseFloat(scoreMax);
       const r = await api.get<ListResp>("/v1/pbp/api/candidates", { params });
@@ -53,6 +56,34 @@ export default function CandidatesList() {
     );
   });
 
+  const exportCsv = () => {
+    if (!filtered.length) return;
+    const keys = Object.keys(filtered[0]);
+    const csv = [
+      keys.join(","),
+      ...filtered.map((c) =>
+        keys
+          .map((k) => {
+            const v = c[k];
+            const s = String(v ?? "");
+            return /[,"\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+          })
+          .join(","),
+      ),
+    ].join("\n");
+    const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `candidates-${filtered.length}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  // Virtualize when dataset is large
+  const useVirtual = filtered.length > VIRTUALIZE_THRESHOLD;
+  const virtual = useVirtualizedList(filtered, 36, 600, 8);
+
   return (
     <div className="space-y-6">
       <div className="flex items-start justify-between">
@@ -62,12 +93,18 @@ export default function CandidatesList() {
             donor-screener-pbp · {data?.total ?? 0} 个候选
           </p>
         </div>
-        <Button variant="outline" asChild>
-          <Link to="/candidates/top20">
-            <BarChart3 className="mr-2 h-4 w-4" />
-            Top-20
-          </Link>
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button variant="outline" onClick={exportCsv} disabled={!filtered.length}>
+            <Download className="mr-2 h-4 w-4" />
+            导出 CSV
+          </Button>
+          <Button variant="outline" asChild>
+            <Link to="/candidates/top20">
+              <BarChart3 className="mr-2 h-4 w-4" />
+              Top-20
+            </Link>
+          </Button>
+        </div>
       </div>
 
       <Card>
@@ -125,6 +162,7 @@ export default function CandidatesList() {
           <CardTitle>候选</CardTitle>
           <CardDescription>
             显示 {filtered.length} / {data?.total ?? 0}
+            {useVirtual && <span className="ml-2 text-xs text-muted-foreground">(virtualized)</span>}
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -140,6 +178,34 @@ export default function CandidatesList() {
             </p>
           ) : filtered.length === 0 ? (
             <p className="py-8 text-center text-sm text-muted-foreground">无匹配候选</p>
+          ) : useVirtual ? (
+            <div ref={virtual.containerRef} className="relative h-[600px] overflow-auto rounded border">
+              <div style={{ height: virtual.totalHeight, position: "relative" }}>
+                <div style={{ transform: `translateY(${virtual.offsetY}px)` }}>
+                  {virtual.slice.map((c) => (
+                    <div
+                      key={c.id}
+                      className="grid grid-cols-[80px_120px_1fr_120px_100px] items-center gap-2 border-b px-3 text-sm"
+                      style={{ height: 36 }}
+                    >
+                      <span className="font-mono text-xs">#{c.rank}</span>
+                      <span className="font-mono text-xs">{c.id}</span>
+                      <span className="truncate font-mono text-xs" title={String(c.smiles)}>
+                        {String(c.smiles)}
+                      </span>
+                      <span className="text-right">
+                        <Badge variant={c.score >= 0.7 ? "success" : c.score >= 0.5 ? "secondary" : "destructive"}>
+                          {c.score.toFixed(4)}
+                        </Badge>
+                      </span>
+                      <Button size="sm" variant="ghost" asChild className="h-7">
+                        <Link to={`/candidates/${c.id}`}>详情</Link>
+                      </Button>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
           ) : (
             <Table>
               <TableHeader>

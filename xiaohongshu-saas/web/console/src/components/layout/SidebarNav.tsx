@@ -5,6 +5,7 @@ import {
   ListTodo,
   FlaskConical,
   BarChart3,
+  Bell,
   Settings as SettingsIcon,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -19,6 +20,7 @@ const NAV = [
   { to: "/analytics/pv-uv", label: "PV/UV", icon: BarChart3, indent: true },
   { to: "/analytics/funnel", label: "漏斗", icon: BarChart3, indent: true },
   { to: "/analytics/top-items", label: "Top-N", icon: BarChart3, indent: true },
+  { to: "/alerts", label: "告警", icon: Bell },
   { to: "/settings", label: "设置", icon: SettingsIcon },
 ];
 
@@ -45,7 +47,7 @@ export function SidebarNav() {
         </NavLink>
       ))}
       <div className="mt-auto flex items-center gap-2 px-3 pt-6 text-xs text-muted-foreground">
-        <span>v1.1.0</span>
+        <span>v1.2.0</span>
       </div>
     </nav>
   );
