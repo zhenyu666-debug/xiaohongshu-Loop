@@ -1,0 +1,24 @@
+# Large data files
+*.csv
+*.csv.gz
+*.parquet
+data/
+*.db
+
+# Flink jars
+flink/lib/
+iceberg-rest/lib/
+
+# DuckDB railway datasets
+duckdb_railway/
+
+# All jar files
+*.jar
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.ruff_cache/
+.env
