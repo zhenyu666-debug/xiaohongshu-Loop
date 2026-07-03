@@ -14,8 +14,11 @@ const NAV = [
   { to: "/accounts", label: "账号", icon: Users },
   { to: "/tasks", label: "任务", icon: ListTodo },
   { to: "/candidates", label: "候选", icon: FlaskConical },
-  { to: "/candidates/top20", label: "  Top-20", icon: FlaskConical, indent: true },
+  { to: "/candidates/top20", label: "Top-20", icon: FlaskConical, indent: true },
   { to: "/analytics", label: "数据", icon: BarChart3 },
+  { to: "/analytics/pv-uv", label: "PV/UV", icon: BarChart3, indent: true },
+  { to: "/analytics/funnel", label: "漏斗", icon: BarChart3, indent: true },
+  { to: "/analytics/top-items", label: "Top-N", icon: BarChart3, indent: true },
   { to: "/settings", label: "设置", icon: SettingsIcon },
 ];
 
@@ -30,7 +33,7 @@ export function SidebarNav() {
           className={({ isActive }) =>
             cn(
               "flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-colors",
-              indent && "pl-7 text-xs",
+              indent && "pl-9 text-xs",
               isActive
                 ? "bg-primary text-primary-foreground"
                 : "text-muted-foreground hover:bg-accent hover:text-accent-foreground",
