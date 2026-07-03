@@ -72,9 +72,6 @@ compile*.log
 v2_run_*.log
 run.log
 scraper_log.txt
-*.json
-*.js
-*.txt
 qcc_cookies.txt
 qcc_sessid.txt
 security-report-screenshot.png
