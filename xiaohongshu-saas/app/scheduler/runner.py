@@ -8,6 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.channels import registry
 from app.content_factory import factory
 from app.core.logging import logger
+from app.core import metrics
 from app.core.risk import evaluate as risk_evaluate
 from app.core.risk import mark_failure, mark_success
 from app.core.types import PublishResult, PublishStatus
@@ -35,6 +36,7 @@ async def run_task_once(session: AsyncSession, task: Task) -> list[Publish]:
         verdict = await risk_evaluate(session, account)
         if not verdict.allowed:
             logger.info("skip account {} (risk: {})", account_id, verdict.reason)
+            metrics.inc("risk_blocks_total", account_id=account_id, reason=verdict.reason[:64])
             publishes.append(await _record_skipped(session, task, account, verdict.reason))
             continue
 
@@ -81,10 +83,12 @@ async def run_task_once(session: AsyncSession, task: Task) -> list[Publish]:
             publish_row.external_id = result.external_id
             publish_row.url = result.url
             await mark_success(session, account)
+            metrics.inc("publishes_total", channel=task.channel, status="success")
         else:
             publish_row.status = PublishStatus.FAILED.value
             publish_row.error = result.error or "unknown"
             await mark_failure(session, account, publish_row.error or "unknown")
+            metrics.inc("publishes_total", channel=task.channel, status="failed")
 
         publishes.append(publish_row)
 
@@ -104,4 +108,5 @@ async def _record_skipped(session: AsyncSession, task: Task, account: Account, r
     )
     session.add(row)
     await session.flush()
+    metrics.inc("publishes_total", channel=task.channel, status="skipped")
     return row

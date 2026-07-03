@@ -13,6 +13,7 @@ from app.api import api_router
 from app.channels import registry as channel_registry
 from app.core.config import settings
 from app.core.logging import logger, setup_logging
+from app.core import metrics
 from app.db.session import init_db
 from app.scheduler import shutdown_scheduler, start_scheduler
 
@@ -52,6 +53,7 @@ app.add_middleware(
 )
 
 app.include_router(api_router)
+metrics.install_fastapi_app(app)
 
 
 # ---- Web console (lightweight Jinja-free fallback) ----
