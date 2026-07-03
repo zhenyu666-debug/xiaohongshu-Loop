@@ -5,6 +5,7 @@ import { MemoryRouter } from "react-router-dom";
 import Dashboard from "@/pages/Dashboard";
 import Accounts from "@/pages/Accounts";
 import Tasks from "@/pages/Tasks";
+import Settings from "@/pages/Settings";
 
 function wrap(node: React.ReactNode) {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
@@ -15,7 +16,7 @@ function wrap(node: React.ReactNode) {
   );
 }
 
-describe("pages render skeleton on loading", () => {
+describe("pages render in skeleton state", () => {
   it("Dashboard", () => {
     render(wrap(<Dashboard />));
     expect(screen.getByText(/概览/)).toBeInTheDocument();
@@ -27,5 +28,9 @@ describe("pages render skeleton on loading", () => {
   it("Tasks", () => {
     render(wrap(<Tasks />));
     expect(screen.getByText(/定时任务/)).toBeInTheDocument();
+  });
+  it("Settings", () => {
+    render(wrap(<Settings />));
+    expect(screen.getByText(/设置/)).toBeInTheDocument();
   });
 });

@@ -8,6 +8,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Table, TableHeader, TableHead, TableBody, TableRow, TableCell } from "@/components/ui/table";
 import api from "@/lib/api";
 import { formatDate } from "@/lib/utils";
+import { describeCron } from "@/lib/cron";
 import type { Task } from "@/types/api";
 
 export default function Tasks() {
@@ -15,6 +16,7 @@ export default function Tasks() {
   const { data, isLoading, isError } = useQuery({
     queryKey: ["tasks"],
     queryFn: async () => (await api.get<Task[]>("/scheduler/tasks/")).data,
+    refetchInterval: 30_000,
   });
 
   const triggerMut = useMutation({
@@ -28,20 +30,31 @@ export default function Tasks() {
 
   const toggleMut = useMutation({
     mutationFn: async (t: Task) => api.patch(`/scheduler/tasks/${t.id}/`, { enabled: !t.enabled }),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["tasks"] }),
+    onSuccess: (_d, t) => {
+      toast.success(`已${t.enabled ? "停用" : "启用"} ${t.name}`);
+      qc.invalidateQueries({ queryKey: ["tasks"] });
+    },
+    onError: (e: Error) => toast.error(`切换失败: ${e.message}`),
   });
 
   return (
     <div className="space-y-6">
       <div>
         <h2 className="text-2xl font-semibold tracking-tight">定时任务</h2>
-        <p className="text-sm text-muted-foreground">查看调度任务、启停与手动触发</p>
+        <p className="text-sm text-muted-foreground">查看调度任务、启停与手动触发 · 每 30s 刷新</p>
       </div>
 
       <Card>
         <CardHeader>
           <CardTitle>任务列表</CardTitle>
-          <CardDescription>{data?.length ?? 0} 个任务</CardDescription>
+          <CardDescription>
+            {data?.length ?? 0} 个任务 ·{" "}
+            <span className="text-emerald-600 dark:text-emerald-400">
+              {data?.filter((t) => t.enabled).length ?? 0} 启用
+            </span>
+            {" / "}
+            <span className="text-muted-foreground">{data?.filter((t) => !t.enabled).length ?? 0} 停用</span>
+          </CardDescription>
         </CardHeader>
         <CardContent>
           {isLoading ? (
@@ -61,7 +74,8 @@ export default function Tasks() {
                   <TableHead>ID</TableHead>
                   <TableHead>名称</TableHead>
                   <TableHead>平台</TableHead>
-                  <TableHead>Cron</TableHead>
+                  <TableHead>调度 (人类可读)</TableHead>
+                  <TableHead className="font-mono text-xs">Cron 原文</TableHead>
                   <TableHead>上次运行</TableHead>
                   <TableHead>状态</TableHead>
                   <TableHead className="text-right">操作</TableHead>
@@ -71,11 +85,12 @@ export default function Tasks() {
                 {data.map((t) => (
                   <TableRow key={t.id}>
                     <TableCell className="font-mono text-xs">{t.id}</TableCell>
-                    <TableCell>{t.name}</TableCell>
+                    <TableCell className="font-medium">{t.name}</TableCell>
                     <TableCell>
                       <Badge variant="outline">{t.channel}</Badge>
                     </TableCell>
-                    <TableCell className="font-mono text-xs">{t.schedule}</TableCell>
+                    <TableCell className="text-sm">{describeCron(t.schedule)}</TableCell>
+                    <TableCell className="font-mono text-xs text-muted-foreground">{t.schedule}</TableCell>
                     <TableCell className="text-muted-foreground">{formatDate(t.last_run, "从未")}</TableCell>
                     <TableCell>
                       <Badge variant={t.enabled ? "success" : "secondary"}>
@@ -89,6 +104,7 @@ export default function Tasks() {
                           variant="outline"
                           onClick={() => toggleMut.mutate(t)}
                           disabled={toggleMut.isPending}
+                          aria-label={t.enabled ? "停用" : "启用"}
                         >
                           {t.enabled ? <Pause className="h-3 w-3" /> : <Play className="h-3 w-3" />}
                           {t.enabled ? "停用" : "启用"}
