@@ -120,10 +120,13 @@ jobs:
             exit 1
           fi
 
-          # 校验 2: diff 行数上限
-          DIFF_LINES=$(git diff --cached --stat | tail -1 | grep -oE '[0-9]+ insertion' | grep -oE '[0-9]+' || echo 0)
+          # 校验 2: diff 行数上限 (insertion + deletion 累加, 防止 agent 滥用删除抹文件)
+          # git diff --cached --numstat 输出每行 "<ins>\t<del>\t<file>", 文件为空时 "-" 字符串
+          # awk 累加两者求总改动行数
+          DIFF_LINES=$(git diff --cached --numstat -- xiaohongshu-saas \
+                       | awk '{ins+=$1; del+=$2} END {print ins+del+0}')
           if [ "${DIFF_LINES:-0}" -gt 1000 ]; then
-            echo "::error::Diff too large ($DIFF_LINES insertions), aborting push"
+            echo "::error::Diff too large ($DIFF_LINES total changes: ins+del), aborting push"
             git restore --staged .
             echo "has_changes=false" >> "$GITHUB_OUTPUT"
             exit 1
