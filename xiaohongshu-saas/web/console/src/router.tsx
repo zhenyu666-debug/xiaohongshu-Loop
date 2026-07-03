@@ -1,9 +1,12 @@
 import { createBrowserRouter, Navigate } from "react-router-dom";
-import { FlaskConical, BarChart3 } from "lucide-react";
+import { BarChart3 } from "lucide-react";
 import { AppShell } from "@/components/layout/AppShell";
 import Dashboard from "@/pages/Dashboard";
 import Accounts from "@/pages/Accounts";
 import Tasks from "@/pages/Tasks";
+import CandidatesList from "@/pages/CandidatesList";
+import CandidatesTop20 from "@/pages/CandidatesTop20";
+import CandidateDetail from "@/pages/CandidateDetail";
 import Settings from "@/pages/Settings";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 
@@ -16,17 +19,9 @@ export const router = createBrowserRouter(
         { index: true, element: <Dashboard /> },
         { path: "accounts", element: <Accounts /> },
         { path: "tasks", element: <Tasks /> },
-        {
-          path: "candidates",
-          element: (
-            <RoadmapPage
-              milestone="M3"
-              title="候选评分"
-              description="donor-screener-pbp 服务的 Top-20 候选 / 分数分布 / 详情"
-              icon={FlaskConical}
-            />
-          ),
-        },
+        { path: "candidates", element: <CandidatesList /> },
+        { path: "candidates/top20", element: <CandidatesTop20 /> },
+        { path: "candidates/:id", element: <CandidateDetail /> },
         {
           path: "analytics",
           element: (

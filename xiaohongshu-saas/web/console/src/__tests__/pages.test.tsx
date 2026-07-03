@@ -2,6 +2,7 @@ import { describe, it, expect } from "vitest";
 import { render, screen } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { MemoryRouter } from "react-router-dom";
+
 import Dashboard from "@/pages/Dashboard";
 import Accounts from "@/pages/Accounts";
 import Tasks from "@/pages/Tasks";
@@ -16,7 +17,7 @@ function wrap(node: React.ReactNode) {
   );
 }
 
-describe("pages render in skeleton state", () => {
+describe("pages render skeleton / heading", () => {
   it("Dashboard", () => {
     render(wrap(<Dashboard />));
     expect(screen.getByText(/概览/)).toBeInTheDocument();

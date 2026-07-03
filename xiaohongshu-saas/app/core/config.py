@@ -58,6 +58,10 @@ class Settings(BaseSettings):
     # ---- Misc ----
     cors_origins: List[str] = Field(default_factory=lambda: ["*"])
 
+    # ---- Upstream services (gateway targets) ----
+    pbp_api_url: str = "http://localhost:8090"
+    lakehouse_api_url: str = "http://localhost:8091"
+
     @property
     def is_sqlite(self) -> bool:
         return self.database_url.startswith("sqlite")
