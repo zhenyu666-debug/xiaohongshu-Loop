@@ -6,14 +6,15 @@
 > **命名约定**：本仓库本文件叫 `LOOP-STATE.md`（不带 `xhs` 后缀）。
 > 旧的 `LOOP-STATExhs.md` 是上一个 session 的工作日志，保留作为历史档案，**不是 loop 状态源**。
 
-Last updated: 2026-07-03 21:18 UTC+8 (本次 run)
-Session: loop boot 第二轮 — 验证 LOOP-STATExhs.md 残留清单
+Last updated: 2026-07-03 21:26 UTC+8 (本次 run)
+Session: loop boot 第三轮 — 修 auto-fix.yml 真实 bug
 
 ## 验证证据 (item 完成必须基于此)
 
-- HEAD SHA: `c6165af8218c5af15f99357bd62640e826b19522` (`main`)
+- HEAD SHA: `080d8031e4ef2c7a58577e2a01a29dafc7348a4a` (`main`)
 - 远端 SHA: 同上（已同步）
-- 本 session 推到 main 的 commits: `c453420` (LOOP-STATE.md 初始), `9854e11` (LOOP-STATE SHA evidence 修正), `c6165af` (item 5 evidence + 本地 pytest 结果)
+- 本 session 推到 main 的 commits: `c453420` + `9854e11` + `c6165af` + `2c75ceb` + `080d803` (diff size bug fix)
+- 关键发现: **auto-fix.yml diff size 限制本意是防大改, 但只算 insert 不算 delete** → agent 可删任意多文件
 - 工作区状态: 7 个未跟踪 .py 临时脚本（见 item 3）
 - 主分支 commits: 见 `git log --oneline -20`
 - 工作区状态: 7 个未跟踪 .py 临时脚本（见 item 3）
@@ -92,6 +93,23 @@ Session: loop boot 第二轮 — 验证 LOOP-STATExhs.md 残留清单
 - **下次注意**:
   - 调试入口: `cd xiaohongshu-saas && python -m pytest tests/test_<name>.py -v`
   - 加新测试要"Match the patterns" (`test_*.py` 函数名 `test_*`)
+
+### item 6: 修 auto-fix.yml diff size 漏算 deletion 的 bug
+- **status**: done
+- **做了什么**:
+  - 阅读 `.github/workflows/auto-fix.yml`, 发现 line 124-129 的 DIFF_LINES 只 grep `[0-9]+ insertion`
+  - 改用 `git diff --cached --numstat | awk '{ins+=$1; del+=$2} END {print ins+del+0}'`
+  - 在 tempdir 跑 git init + bash 验证 4 个 case
+- **结果** (用 Git Bash awk 测真实 git):
+  - insert 1 line: 1 ✓
+  - delete 1 line: 1 (老代码 0) ✓
+  - no changes: 0 ✓
+  - 1499 line 删除: 1501 (老代码 0) ✓ — 老代码 silently 放行
+- **Commit**: `080d8031e4ef2c7a58577e2a01a29dafc7348a4a` on main
+- **下次注意**:
+  - 老 grep 是"writing-dominant"假设, 真实场景 deletion 是 silent attack vector
+  - 任何"基于 --stat 的统计限制"应该用 --numstat + awk 累加, 或 `git diff --shortstat` 的数字
+  - Git Bash 在 `C:/Program Files/Git/bin/bash.exe` 下调用 awk 有效 (系统 `bash.exe` 是 WSL, 没 awk)
 
 ## Needs-me list（agent 没法决定的事）
 
