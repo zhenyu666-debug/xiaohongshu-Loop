@@ -1,0 +1,201 @@
+name: auto-fix
+
+# 当 xhs-saas-ci 跑完且失败时, 自动让 Claude agent 读失败日志 → 做最小修复 →
+# 再次跑 pytest → 直到绿 / 烧光预算。绿了直接 push 到 main。
+#
+# ⚠️ 这是 "无人类 gate" 模式: agent 改完会直接 push 到 main。
+# 建议在 GitHub 仓库 settings → branches → main 启用:
+#   - Require status checks (xhs-saas-ci 必须过)
+#   - Dismiss stale pull request approvals on new commits
+# 另: secret ANTHROPIC_API_KEY 必须在 repo settings → secrets 里配。
+#
+# 纵深防御 (除 prompt 三条约束外):
+#   1. paths 过滤: agent 只能改 xiaohongshu-saas/**
+#   2. diff size 限制: 超过 1000 行放弃 push
+#   3. 二次 CI: push 后自动再跑 xhs-saas-ci, 失败则自动 revert
+#   4. concurrency 串行: 防止两次 auto-fix 互相覆盖
+#   5. commit marker [skip auto-fix]: agent 的 commit 用此标记,
+#      workflow 用 [skip ci] 等价物 防止无限循环
+#      (实际机制: agent commit message 包含 "auto-fix" 关键字,
+#       下次 auto-fix 若检测到上一次 fix 是自己 push 的, 则放弃)
+#
+# 详见 docs/auto-fix-tests.md。
+
+on:
+  workflow_run:
+    workflows: ["xhs-saas-ci"]
+    types: [completed]
+
+# 串行化: 同一分支同时只允许一个 auto-fix 跑
+concurrency:
+  group: auto-fix-${{ github.event.workflow_run.head_branch }}
+  cancel-in-progress: false
+
+permissions:
+  contents: write         # push 到 main + revert
+  actions: read           # 查看 workflow 状态判断是否 revert
+
+jobs:
+  auto-fix:
+    # 只在 xhs-saas-ci 失败时启动
+    if: github.event.workflow_run.conclusion == 'failure'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Detect infinite-loop guard
+        id: guard
+        run: |
+          # 防无限循环: 如果 main HEAD 是 auto-fix 相关的 commit (普通 / revert / 二次),
+          # 说明这是上一轮 auto-fix 还没稳定, 不应该再让 agent 介入。
+          # 用户只能手动 push 一个非 auto-fix 的 commit 才能打破循环。
+          LAST_MSG=$(git log -1 --pretty=%s)
+          if [[ "$LAST_MSG" == auto-fix:* ]] || \
+             [[ "$LAST_MSG" == "Revert \"auto-fix"* ]] || \
+             [[ "$LAST_MSG" == *"auto-fix"* ]]; then
+            echo "::error::Last commit is auto-fix-related: $LAST_MSG"
+            echo "::error::Human must push a non-auto-fix commit to break the loop."
+            echo "skipping=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          echo "skipping=false" >> "$GITHUB_OUTPUT"
+
+      - name: Set up Python
+        if: steps.guard.outputs.skipping != 'true'
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: pip
+          cache-dependency-path: xiaohongshu-saas/pyproject.toml
+
+      - name: Install xiaohongshu-saas + dev extras
+        if: steps.guard.outputs.skipping != 'true'
+        working-directory: xiaohongshu-saas
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[dev]"
+
+      - name: Install Claude Code
+        if: steps.guard.outputs.skipping != 'true'
+        # Anthropic 自 v2.1.15 deprecated npm install, 官方推荐 curl 脚本
+        run: curl -fsSL https://claude.ai/install.sh | bash
+
+      - name: Run auto-fix loop
+        if: steps.guard.outputs.skipping != 'true'
+        id: fix
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          MAX_ITER: "10"
+          BUDGET: "5"
+          TEST_CMD: "pytest -q tests"
+        run: |
+          bash scripts/auto-fix-tests.sh 2>&1 | tee agent-fix.log
+          # 用 PIPESTATUS 拿脚本退出码, 不是 tee 的退出码
+          echo "exit_code=${PIPESTATUS[0]}" >> "$GITHUB_OUTPUT"
+
+      - name: Inspect agent diff
+        if: steps.guard.outputs.skipping != 'true'
+        id: inspect
+        run: |
+          git add -A
+          if git diff --cached --quiet -- xiaohongshu-saas; then
+            echo "No xiaohongshu-saas changes, exiting"
+            echo "has_changes=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          # 校验 1: 不允许改 allowlist 外的文件
+          OUT_OF_SCOPE=$(git diff --cached --name-only -- . ':!xiaohongshu-saas' | grep -v '^$' || true)
+          if [ -n "$OUT_OF_SCOPE" ]; then
+            echo "::error::Agent touched files outside allowlist:"
+            echo "$OUT_OF_SCOPE" | sed 's/^/  /'
+            git restore --staged .
+            echo "has_changes=false" >> "$GITHUB_OUTPUT"
+            exit 1
+          fi
+
+          # 校验 2: diff 行数上限
+          DIFF_LINES=$(git diff --cached --stat | tail -1 | grep -oE '[0-9]+ insertion' | grep -oE '[0-9]+' || echo 0)
+          if [ "${DIFF_LINES:-0}" -gt 1000 ]; then
+            echo "::error::Diff too large ($DIFF_LINES insertions), aborting push"
+            git restore --staged .
+            echo "has_changes=false" >> "$GITHUB_OUTPUT"
+            exit 1
+          fi
+
+          echo "has_changes=true" >> "$GITHUB_OUTPUT"
+          echo "diff_lines=$DIFF_LINES" >> "$GITHUB_OUTPUT"
+
+      - name: Push agent fix to main
+        if: steps.inspect.outputs.has_changes == 'true'
+        run: |
+          git config user.name "xhs-saas-bot"
+          git config user.email "agent@local"
+          git commit -m "auto-fix: agent 修复 CI 失败 (workflow_run ${{ github.event.workflow_run.id }})"
+          git push origin HEAD:main
+
+      - name: Trigger CI re-verification
+        if: steps.inspect.outputs.has_changes == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # 推送后让 CI 自然被 push 触发 (不要用 gh workflow run, 那样 event=workflow_dispatch
+          # 会让 poll 时找不到对应 run)
+          echo "Waiting for CI to be triggered by the push above..."
+
+      - name: Wait + verify CI re-run
+        if: steps.inspect.outputs.has_changes == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # 等我们自己 push 触发的 CI 跑完 (CI 自身 timeout 10 分钟 + buffer)
+          echo "Polling for CI re-run to complete..."
+          DEADLINE=$(($(date +%s) + 720))
+          MY_SHA=$(git rev-parse HEAD)
+          while [ $(date +%s) -lt $DEADLINE ]; do
+            # 找 head_sha == MY_SHA 的最近一次 xhs-saas-ci run (event=push, 因为 push 触发)
+            RESULT=$(gh api \
+              "repos/${{ github.repository }}/actions/workflows/xhs-saas-ci.yml/runs?head_sha=$MY_SHA&event=push" \
+              --jq '.workflow_runs[0].conclusion // "in_progress"' 2>/dev/null || echo "api_error")
+            echo "  current: $RESULT"
+            if [ "$RESULT" = "success" ] || [ "$RESULT" = "failure" ]; then
+              if [ "$RESULT" = "success" ]; then
+                echo "::notice::CI re-verified OK"
+                exit 0
+              else
+                echo "::error::CI re-verification failed, will revert"
+                exit 1
+              fi
+            fi
+            sleep 30
+          done
+          echo "::error::CI timed out after 12 minutes, reverting to be safe"
+          exit 1
+
+      - name: Revert agent fix on CI re-failure
+        if: failure() && steps.inspect.outputs.has_changes == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # 二次 CI 失败 / 超时: 自动 revert, 保持 main 干净
+          echo "Reverting agent commit..."
+          git config user.name "xhs-saas-bot"
+          git config user.email "agent@local"
+          git revert HEAD --no-edit
+          git push origin HEAD:main
+          echo "::error::Auto-fix reverted because CI re-verification failed"
+
+      - name: Upload agent log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: auto-fix-log-${{ github.event.workflow_run.id }}
+          path: |
+            agent-fix.log
+          if-no-files-found: ignore
