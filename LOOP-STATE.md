@@ -11,7 +11,7 @@ Session: loop boot — 验证 LOOP-STATExhs.md 残留清单
 
 ## 验证证据 (item 完成必须基于此)
 
-- HEAD SHA: `333bb11958491de447fa1986b9f0a48d22021623` (`main`)
+- HEAD SHA: `c4534209feb4fcc3a6455c3d797d8186ba358690` (`main`)
 - 远端 SHA: 同上（已同步）
 - 主分支 commits: 见 `git log --oneline -20`
 - 工作区状态: 7 个未跟踪 .py 临时脚本（见 item 3）
