@@ -104,7 +104,21 @@ celery -A app.workers.celery_app worker -l info
 cd xiaohongshu-saas/deploy
 docker compose up -d
 # Web:  http://localhost:8080
+# Prometheus: http://localhost:9090
 ```
+
+### 方式 C：React 控制台（可选）
+
+完整 React/Vite 管理界面，挂在 `/console`：
+
+```bash
+cd xiaohongshu-saas/web/console
+npm install     # 或 pnpm install
+npm run dev     # 开发模式 http://localhost:5173/console/
+npm run build   # 打包到 dist/，之后 /console 由 FastAPI 直接服务
+```
+
+API 代理已配置，开发时 Vite 把 `/api` 请求转发到 `http://localhost:8080`。
 
 ---
 

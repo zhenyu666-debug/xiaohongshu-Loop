@@ -60,6 +60,12 @@ metrics.install_fastapi_app(app)
 if (WEB_DIR / "static").exists():
     app.mount("/static", StaticFiles(directory=WEB_DIR / "static"), name="static")
 
+console_dist = WEB_DIR / "console" / "dist"
+if console_dist.exists():
+    app.mount("/console", StaticFiles(directory=console_dist, html=True), name="console")
+else:
+    logger.info("/console is not mounted (dist not found); run: cd web/console && npm install && npm run build")
+
 
 @app.get("/", response_class=HTMLResponse)
 async def index() -> HTMLResponse:

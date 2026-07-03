@@ -44,3 +44,5 @@ playwright/.cache/
 # Frontend
 web/static/node_modules/
 web/static/dist/
+web/console/dist/
+web/console/node_modules/
