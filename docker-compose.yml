@@ -1,0 +1,59 @@
+version: "3.9"
+
+# Unified Console three-service stack.
+# pbp-api (8090), lakehouse-api (8091), xhs-saas (8080).
+# xhs-saas proxies to upstreams via /api/v1/pbp/* and /api/v1/lakehouse/*.
+
+services:
+  pbp-api:
+    build: ./donor-screener-pbp
+    container_name: pbp-api
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:8090/healthz"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 5s
+    expose:
+      - "8090"
+
+  lakehouse-api:
+    build: ./data-lakehouse
+    container_name: lakehouse-api
+    restart: unless-stopped
+    environment:
+      TRINO_HOST: ""
+      TRINO_PORT: "8080"
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:8091/healthz"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 5s
+    expose:
+      - "8091"
+
+  xhs-saas:
+    build: ./xiaohongshu-saas
+    container_name: xhs-saas
+    restart: unless-stopped
+    depends_on:
+      pbp-api:
+        condition: service_healthy
+      lakehouse-api:
+        condition: service_healthy
+    environment:
+      PBP_API_URL: http://pbp-api:8090
+      LAKEHOUSE_API_URL: http://lakehouse-api:8091
+      APP_HOST: 0.0.0.0
+      APP_PORT: "8080"
+      DATABASE_URL: sqlite:///./data/app.db
+    ports:
+      - "8080:8080"
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:8080/api/healthz"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 15s

@@ -300,6 +300,102 @@ pytest -q tests
 
 [MIT](LICENSE) · 详见 [`LICENSE`](LICENSE) 文件。
 
+## Unified Console · Tier-1（GUI 整合）
+
+把 **xiaohongshu-saas**、**donor-screener-pbp**、**data-lakehouse** 三个真实模块整合到一个 Web 控制台里。
+
+### 架构
+
+```mermaid
+flowchart LR
+  Browser[Browser /console]
+  subgraph XHS[xhs-saas :8080]
+    Console[React + Vite SPA]
+    Gateway[/api/v1/gateway/]
+    Events[SSE /events/stream]
+    Alerts[alerts engine]
+    Cache[TTL cache]
+  end
+  subgraph PBP[pbp-api :8090]
+    Cand[/api/candidates/]
+  end
+  subgraph LH[lakehouse-api :8091]
+    Trino[Trino wrapper]
+    Seed[seed fallback]
+  end
+  Browser -- HTTPS --> XHS
+  XHS -- /api/v1/pbp/* --> Cand
+  XHS -- /api/v1/lakehouse/* --> Trino
+  Trino -. unreachable .-> Seed
+  Events -. live .-> Browser
+  Alerts -. recent .-> Browser
+```
+
+### 启停（docker compose）
+
+```bash
+docker compose up -d --build
+curl http://localhost:8080/api/healthz          # xhs-saas
+curl http://localhost:8080/api/v1/health/all    # aggregate
+open http://localhost:8080/console              # 控制台
+docker compose down
+```
+
+### 端到端冒烟测试
+
+```bash
+pip install -r scripts/requirements-e2e.txt
+python scripts/e2e_smoke.py
+```
+
+### GUI 页面
+
+| 路径 | 描述 |
+|------|------|
+| `/console/` | Dashboard |
+| `/console/accounts` | 账号管理 |
+| `/console/tasks` | 定时任务 |
+| `/console/candidates` | 候选列表（> 200 行自动虚拟化） |
+| `/console/candidates/top20` | Top-20 + 分数分布直方图 |
+| `/console/candidates/:id` | 候选详情 |
+| `/console/analytics` | 数据 KPI 概览 |
+| `/console/analytics/pv-uv` | PV/UV 时序（多指标切换） |
+| `/console/analytics/funnel` | 转化漏斗 |
+| `/console/analytics/top-items` | Top-N（CSV 导出） |
+| `/console/alerts` | 告警中心（SSE 实时） |
+| `/console/settings` | 设置 |
+
+### 已实现的 milestones
+
+- **M1**：Tailwind + shadcn + React Router + QueryClient + AppShell
+- **M2**：Dashboard / Accounts / Tasks 三页 shadcn + dark mode
+- **M3a**：donor-screener-pbp FastAPI（端口 8090，candidates API + tests）
+- **M3b**：xhs-saas 上游 gateway + Candidates 列表/Top-20/详情 三页
+- **M4a**：data-lakehouse FastAPI（端口 8091，Trino wrapper + seed fallback）
+- **M4b**：Analytics 概览/PV-UV/漏斗/Top-N 四页
+- **M5 backend**：SSE /events/stream、告警引擎（60s 滑窗）、TTL cache
+- **M5 frontend**：useSSE / useVirtualizedList、AlertsCenter、Candidates 虚拟化 + CSV 导出
+- **M6**：docker-compose 三服务编排 + e2e smoke + 架构图
+
+### 测试统计
+
+| 服务 | 测试数 |
+|------|-------|
+| xhs-saas backend | 39/39 |
+| xhs-saas console frontend | 21/21 |
+| pbp-api | 5/5 |
+| lakehouse-api | 5/5 |
+| **合计** | **70/70** |
+
+### 端口汇总
+
+| 端口 | 服务 |
+|------|------|
+| 8080 | xhs-saas（含 /console 控制台） |
+| 8090 | pbp-api |
+| 8091 | lakehouse-api |
+| 8081 | (历史) iceberg-rest |
+
 ---
 
 <p align="center">
