@@ -22,12 +22,13 @@
   <a href="https://github.com/zhenyu666-debug/xiaohongshu-Loop/network/members"><img src="https://img.shields.io/github/forks/zhenyu666-debug/xiaohongshu-Loop?style=for-the-badge&logo=github&color=FF6B81&logoColor=white" alt="GitHub forks"/></a>
   <a href="https://github.com/zhenyu666-debug/xiaohongshu-Loop/issues"><img src="https://img.shields.io/github/issues/zhenyu666-debug/xiaohongshu-Loop?style=for-the-badge&logo=github&color=1a1a1a" alt="GitHub issues"/></a>
   <a href="https://github.com/zhenyu666-debug/xiaohongshu-Loop/actions"><img src="https://img.shields.io/github/actions/workflow/status/zhenyu666-debug/xiaohongshu-Loop/xhs-saas-ci.yml?style=for-the-badge&logo=githubactions&logoColor=white&label=CI" alt="CI status"/></a>
+  <a href="https://github.com/zhenyu666-debug/xiaohongshu-Loop/actions"><img src="https://img.shields.io/github/actions/workflow/status/zhenyu666-debug/xiaohongshu-Loop/auto-fix.yml?style=for-the-badge&logo=githubactions&logoColor=white&label=auto-fix" alt="auto-fix status"/></a>
   <a href="https://github.com/zhenyu666-debug/xiaohongshu-Loop/blob/main/LICENSE"><img src="https://img.shields.io/github/license/zhenyu666-debug/xiaohongshu-Loop?style=for-the-badge&color=blue" alt="License"/></a>
   <a href="https://www.python.org/"><img src="https://img.shields.io/badge/python-3.11%2B-3776AB?style=for-the-badge&logo=python&logoColor=white" alt="Python 3.11+"/></a>
 </p>
 
 <p align="center">
-  <a href="#-快速开始">快速开始</a> · <a href="#-架构">架构</a> · <a href="#-demo">Demo</a> · <a href="xiaohongshu-saas/README.md">子项目文档</a>
+  <a href="#-快速开始">快速开始</a> · <a href="#-架构">架构</a> · <a href="#-自动修复测试-agent-loop">🤖 auto-fix</a> · <a href="#-demo">Demo</a> · <a href="xiaohongshu-saas/README.md">子项目文档</a>
 </p>
 
 ---
@@ -104,6 +105,78 @@ flowchart TB
   <img src="https://via.placeholder.com/480x270/1a1a1a/ffffff?text=Console" alt="Console placeholder" width="480"/>
   <img src="https://via.placeholder.com/480x270/FF6B81/ffffff?text=Dashboard" alt="Dashboard placeholder" width="480"/>
 </p>
+
+## 🤖 自动修复测试 (agent loop)
+
+> **凌晨 CI 红了 1-2 处，但你已经躺平** —— 让 Claude agent 自动读失败、做最小修复、再跑测试，直到绿或预算烧光。改完后**直接 push 到 main**。
+
+### 触发闭环
+
+```
+PR merge → xhs-saas-ci runs → CI 失败
+                ↓
+        workflow_run 触发 auto-fix (auto-fix.yml)
+                ↓
+   ┌─ infinite-loop guard → 已是 auto-fix commit? → 放弃
+   ├─ 10 轮: agent 修测试 (claude -p + pytest, $5/轮)
+   ├─ inspect: 路径白名单 + diff ≤ 1000 行
+   ├─ push → main
+   ├─ 等二次 CI (12 min polling)
+   │     ├─ success ✓ → 留
+   │     └─ failure ✗ → 自动 revert
+   └─ 失败: agent 日志上传 artifact
+```
+
+### 五层纵深防御
+
+| 层 | 机制 |
+|---|---|
+| 1 | **paths 过滤** — agent 只能改 `xiaohongshu-saas/**` |
+| 2 | **diff ≤ 1000 行** — 防止顺手大改 |
+| 3 | **二次 CI** — push 后自动再跑，失败就自动 revert |
+| 4 | **concurrency 串行** — 同分支同时只跑一个 |
+| 5 | **infinite-loop guard** — HEAD 含 `auto-fix` 字样就放弃 |
+
+### 启用 (一次性)
+
+**1. 配 secret**: `仓库 settings → Secrets and variables → Actions → New repository secret`
+
+```
+Name:  ANTHROPIC_API_KEY
+Value: <your-key>      # https://console.anthropic.com/keys
+```
+
+**2. 启用 branch protection** (推荐): `仓库 settings → Branches → main → Add rule`
+
+- ☑ Require status checks to pass before merging
+  - 必选: `lint-and-test` (xhs-saas-ci 的 job)
+- ☑ Do not allow bypassing the above settings
+
+**3. 验证安装**:
+
+```bash
+# 本地试跑一遍 (CI 不会触发, 仅本地模拟)
+cd xiaohongshu-saas
+MAX_ITER=3 BUDGET=2 bash ../scripts/auto-fix-tests.sh
+
+# 看 .github/workflows/auto-fix.yml 详情
+cat .github/workflows/auto-fix.yml
+```
+
+### 紧急停止
+
+auto-fix 失控时（agent 反复改同一文件、budget 烧光、infinite loop）：
+
+| 方式 | 命令 |
+|---|---|
+| **A. UI 取消** | `Settings → Actions → 找到该 run → Cancel workflow` |
+| **B. 关触发** | 在 `.github/workflows/auto-fix.yml` 注释掉整个 `on:` 块, push |
+| **C. 打破循环** | push 任意一个**不含 "auto-fix"** 的 commit，打破 guard 检测 |
+| **D. 改回旧 SHA** | `git revert HEAD && git push`（CI 会反向验证） |
+
+详见 [`docs/auto-fix-tests.md`](docs/auto-fix-tests.md)。
+
+---
 
 ## 快速开始
 
@@ -186,11 +259,19 @@ register(XiaohongshuAdapter())
 - [x] 内容工厂（模板 + OpenAI 改写）
 - [x] Docker 一键起
 - [x] 仓库根 README 装修（Hero + Badge + 架构图）
+- [x] **CI 自动修复**（`auto-fix.yml` + `scripts/auto-fix-tests*.sh`，五层防御）
 - [ ] 抖音 / 视频号适配器
 - [ ] 多租户（团队 / 角色 / 计费）
 - [ ] 移动端 H5 控制台
 - [ ] 数据回流（曝光 / 互动 → 选题反哺）
 - [ ] 真实 demo GIF + 控制台截图替换占位
+
+## 相关工具与文档
+
+- 🤖 **自动修复**: [`.github/workflows/auto-fix.yml`](.github/workflows/auto-fix.yml) + [`docs/auto-fix-tests.md`](docs/auto-fix-tests.md)
+- 🐍 **Python loop**: [`scripts/auto-fix-tests.sh`](scripts/auto-fix-tests.sh)
+- 📦 **npm loop**: [`scripts/auto-fix-tests-npm.sh`](scripts/auto-fix-tests-npm.sh)
+- 🧪 **CI**: [`.github/workflows/xhs-saas-ci.yml`](.github/workflows/xhs-saas-ci.yml)
 
 ## Contributing
 
