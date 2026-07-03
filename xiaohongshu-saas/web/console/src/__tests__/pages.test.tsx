@@ -6,6 +6,7 @@ import { MemoryRouter } from "react-router-dom";
 import Dashboard from "@/pages/Dashboard";
 import Accounts from "@/pages/Accounts";
 import Tasks from "@/pages/Tasks";
+import AnalyticsOverview from "@/pages/AnalyticsOverview";
 import Settings from "@/pages/Settings";
 
 function wrap(node: React.ReactNode) {
@@ -17,7 +18,7 @@ function wrap(node: React.ReactNode) {
   );
 }
 
-describe("pages render skeleton / heading", () => {
+describe("pages render", () => {
   it("Dashboard", () => {
     render(wrap(<Dashboard />));
     expect(screen.getByText(/概览/)).toBeInTheDocument();
@@ -29,6 +30,10 @@ describe("pages render skeleton / heading", () => {
   it("Tasks", () => {
     render(wrap(<Tasks />));
     expect(screen.getByText(/定时任务/)).toBeInTheDocument();
+  });
+  it("AnalyticsOverview", () => {
+    render(wrap(<AnalyticsOverview />));
+    expect(screen.getByText(/今日概览/)).toBeInTheDocument();
   });
   it("Settings", () => {
     render(wrap(<Settings />));
