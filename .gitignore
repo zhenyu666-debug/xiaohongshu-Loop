@@ -1,0 +1,84 @@
+# ===== Python =====
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+.eggs/
+*.egg
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+.tox/
+.venv/
+venv/
+env/
+
+# ===== xiaohongshu-saas 专属 =====
+xiaohongshu-saas/.env
+xiaohongshu-saas/data/cookies/
+xiaohongshu-saas/data/images/*.tmp
+xiaohongshu-saas/logs/
+xiaohongshu-saas/web/console/node_modules/
+xiaohongshu-saas/web/console/dist/
+xiaohongshu-saas/.playwright/
+
+# ===== 编辑器 / 系统 =====
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+
+# ===== 日志 / 构建产物 =====
+*.log
+!xiaohongshu-saas/.gitkeep
+
+# ===== 本地脚本（敏感/临时） =====
+_check_*.py
+_check_*.txt
+_html_snippet.txt
+_debug_*.html
+_debug_*.py
+_test_result.txt
+
+# ===== 工作区其他子项目（不属于本仓库，应忽略） =====
+.auth/
+.gradle/
+build/
+target/
+logs/
+data/
+data-lakehouse/
+donor-number-screener/
+donor-java-screener/
+donor-screener-java/
+donor-screener-pbp/
+flyasiana_capture/
+front/
+li_s_additives/
+liepin/
+qcc/
+shared/
+uml-p-screener/
+vnpy/
+zhilian/
+
+# 这些顶层 .py / .sql / 临时日志不算仓库资产
+build.log
+compile*.log
+v2_run_*.log
+run.log
+scraper_log.txt
+*.json
+*.js
+*.txt
+qcc_cookies.txt
+qcc_sessid.txt
+security-report-screenshot.png
+dependency-check-suppressions.xml
+debug-buttons.js
+create_catalog.sql
+create_dwd_table.sql
