@@ -36,7 +36,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Optional
 
-APP_NAME = "xhs-saas Unified Console"
+APP_NAME = "小红书 SaaS 一体化控制台"
 APP_VERSION = "0.1.0"
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
@@ -53,7 +53,7 @@ SERVICES = [
         "module": "pbp_api.main:app",
         "port": 8090,
         "color": "#38bdf8",
-        "label": "donor screener - candidates API",
+        "label": "供体筛选服务 · 候选分子 API",
     },
     {
         "name": "lakehouse-api",
@@ -61,7 +61,7 @@ SERVICES = [
         "module": "lakehouse_api.main:app",
         "port": 8091,
         "color": "#a78bfa",
-        "label": "data lakehouse - analytics API",
+        "label": "数据湖仓 · 分析指标 API",
     },
     {
         "name": "xhs-saas",
@@ -69,7 +69,7 @@ SERVICES = [
         "module": "app.main:app",
         "port": 8080,
         "color": "#34d399",
-        "label": "xhs-saas gateway + UI host",
+        "label": "小红书 SaaS · 网关 + 控制台宿主",
     },
 ]
 
@@ -140,7 +140,7 @@ def _terminate(proc: Optional[subprocess.Popen]) -> None:
 # HTML / CSS / JS served to the pywebview window
 # ---------------------------------------------------------------------------
 GUI_HTML = r"""<!doctype html>
-<html lang="en">
+<html lang="zh-CN">
 <head>
 <meta charset="utf-8" />
 <title>__APP_NAME__</title>
@@ -262,19 +262,19 @@ GUI_HTML = r"""<!doctype html>
 <header>
   <h1>__APP_NAME__</h1>
   <div>
-    <span class="pill" id="overall">overall: --</span>
+    <span class="pill" id="overall">状态：等待启动</span>
     <span class="pill">v__APP_VERSION__</span>
   </div>
 </header>
 
 <main>
   <div class="toolbar">
-    <button id="b-start"  class="primary">Start services</button>
-    <button id="b-stop"   class="danger"  disabled>Stop services</button>
-    <button id="b-open"                    disabled>Open console in browser</button>
-    <button id="b-status">Show status JSON</button>
-    <button id="b-logs">Open log file</button>
-    <button id="b-quit" class="danger">Quit</button>
+    <button id="b-start"  class="primary">启动服务</button>
+    <button id="b-stop"   class="danger"  disabled>停止服务</button>
+    <button id="b-open"                    disabled>在浏览器中打开控制台</button>
+    <button id="b-status">查看状态 JSON</button>
+    <button id="b-logs">打开日志文件</button>
+    <button id="b-quit" class="danger">退出</button>
   </div>
 
   <div class="grid" id="cards">
@@ -285,10 +285,10 @@ GUI_HTML = r"""<!doctype html>
 </main>
 
 <div class="footer">
-  Console URL once healthy:
+  健康后可访问控制台：
   <a id="url" href="#" class="btn-link">__CONSOLE_URL__</a>
   &nbsp;|&nbsp;
-  Status: <a href="http://__STATUS_HOST__:__STATUS_PORT__/status" target="_blank">http://__STATUS_HOST__:__STATUS_PORT__/status</a>
+  状态端点：<a href="http://__STATUS_HOST__:__STATUS_PORT__/status" target="_blank">http://__STATUS_HOST__:__STATUS_PORT__/status</a>
 </div>
 
 <script>
@@ -314,7 +314,7 @@ GUI_HTML = r"""<!doctype html>
     card.swatch.style.background = (kind === 'healthy') ? '#22c55e'
       : (kind === 'error') ? '#ef4444'
       : (kind === 'starting') ? '#facc15' : '#475569';
-    card.meta.textContent = 'port ' + card.port;
+    card.meta.textContent = '端口 ' + card.port;
   }
   function appendLog(line, cls) {
     const el = document.getElementById('log');
@@ -331,14 +331,14 @@ GUI_HTML = r"""<!doctype html>
     for (const n of order) {
       const sv = data.services[n];
       let kind, msg;
-      if (!sv.running) { kind = 'stopped'; msg = '* stopped'; allHealthy = false; }
-      else if (sv.healthy) { kind = 'healthy'; msg = '* healthy'; anyAlive = true; }
-      else { kind = 'starting'; msg = '* starting...'; anyAlive = true; allHealthy = false; }
+      if (!sv.running) { kind = 'stopped'; msg = '● 已停止'; allHealthy = false; }
+      else if (sv.healthy) { kind = 'healthy'; msg = '● 健康'; anyAlive = true; }
+      else { kind = 'starting'; msg = '● 启动中…'; anyAlive = true; allHealthy = false; }
       setState(n, kind, msg);
     }
     document.getElementById('overall').textContent =
-      !anyAlive ? 'overall: idle'
-      : (allHealthy ? 'overall: all healthy' : 'overall: starting');
+      !anyAlive ? '状态：空闲'
+      : (allHealthy ? '状态：全部健康' : '状态：启动中');
     document.getElementById('b-start').disabled = anyAlive;
     document.getElementById('b-stop').disabled = !anyAlive;
     document.getElementById('b-open').disabled = !allHealthy;
@@ -358,11 +358,11 @@ def _build_service_cards() -> str:
       <div class="card">
         <div class="card-head">
           <span class="name">{svc['name']}</span>
-          <span class="state stopped" data-name="{svc['name']}">* stopped</span>
+          <span class="state stopped" data-name="{svc['name']}">● 已停止</span>
         </div>
         <div class="card-head">
           <span class="swatch" style="background:#475569"></span>
-          <span class="meta">port {svc['port']}</span>
+          <span class="meta">端口 {svc['port']}</span>
         </div>
         <div class="desc">{svc['label']}</div>
       </div>"""
@@ -462,9 +462,9 @@ class Launcher:
     # ---------------- lifecycle ----------------
     def start_all(self) -> str:
         if any(st.proc and st.proc.poll() is None for st in self.states.values()):
-            self._log("Services already running.")
+            self._log("服务已在运行。")
             return "already-running"
-        self._log("Starting three services (uvicorn, local)...")
+        self._log("正在启动三个服务（本地 uvicorn）…")
         for svc in SERVICES:
             self._spawn(svc["name"])
         if self._supervisor is None or not self._supervisor.is_alive():
@@ -501,13 +501,13 @@ class Launcher:
                 creationflags=subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0,
             )
         except FileNotFoundError as e:
-            st.last_error = f"spawn failed: {e}"
-            self._log(f"[{name}] failed to spawn: {e}")
+            st.last_error = f"启动失败: {e}"
+            self._log(f"[{name}] 启动失败: {e}")
             return
         st.proc = proc
         st.started_at = time.time()
         st.last_error = ""
-        self._log(f"[{name}] spawned pid={proc.pid} on port {cfg['port']}")
+        self._log(f"[{name}] 已启动，pid={proc.pid}，端口 {cfg['port']}")
         threading.Thread(
             target=self._reader_thread, args=(name, proc.stdout), daemon=True
         ).start()
@@ -534,31 +534,31 @@ class Launcher:
                     continue
                 if st.proc.poll() is not None:
                     st.healthy = False
-                    st.last_error = f"exited with code {st.proc.returncode}"
+                    st.last_error = f"进程退出，码 {st.proc.returncode}"
                     continue
                 url = f"http://127.0.0.1:{svc['port']}/healthz"
                 ok = _http_get(url, timeout=0.6)
                 if ok and not st.healthy:
-                    self._log(f"[{svc['name']}] healthy at {url}")
+                    self._log(f"[{svc['name']}] 健康检查通过：{url}")
                 st.healthy = ok
             ready = all(self.states[s["name"]].healthy for s in SERVICES)
             if ready and not all_ready_logged:
                 all_ready_logged = True
-                self._log("All three services are healthy.")
-                self._log(f"Console URL: {CONSOLE_URL}")
+                self._log("三个服务全部健康。")
+                self._log(f"控制台地址：{CONSOLE_URL}")
             elif not ready:
                 all_ready_logged = False
             time.sleep(1.5)
 
     def stop_all(self) -> str:
-        self._log("Stopping services...")
+        self._log("正在停止服务…")
         self._stopping = True
         for st in self.states.values():
             _terminate(st.proc)
             st.proc = None
             st.healthy = False
         self._stopping = False
-        self._log("All services stopped.")
+        self._log("所有服务已停止。")
         return "stopped"
 
     # ---------------- status ----------------
@@ -609,13 +609,13 @@ class Launcher:
         try:
             self._status_server = ThreadingHTTPServer((STATUS_HOST, STATUS_PORT), Handler)
         except OSError as e:
-            self._log(f"Status server failed to bind: {e}")
+            self._log(f"状态服务绑定失败：{e}")
             return
         self._status_thread = threading.Thread(
             target=self._status_server.serve_forever, daemon=True
         )
         self._status_thread.start()
-        self._log(f"Status: http://{STATUS_HOST}:{STATUS_PORT}/status")
+        self._log(f"状态端点：http://{STATUS_HOST}:{STATUS_PORT}/status")
 
     def start_gui_server(self) -> None:
         _GuiHandler.gui_html = render_gui_html()
@@ -624,25 +624,25 @@ class Launcher:
                 ("127.0.0.1", LOCAL_GUI_PORT), _GuiHandler
             )
         except OSError as e:
-            self._log(f"GUI server failed to bind: {e}")
+            self._log(f"GUI 服务绑定失败：{e}")
             return
         self._gui_thread = threading.Thread(
             target=self._gui_server.serve_forever, daemon=True
         )
         self._gui_thread.start()
-        self._log(f"GUI: http://127.0.0.1:{LOCAL_GUI_PORT}/")
+        self._log(f"GUI：http://127.0.0.1:{LOCAL_GUI_PORT}/")
 
     # ---------------- tray / browser actions ----------------
     def open_console(self) -> None:
         if _http_get(CONSOLE_URL, timeout=1.0):
             webbrowser.open(CONSOLE_URL)
-            self._log(f"Opened {CONSOLE_URL} in default browser.")
+            self._log(f"已在默认浏览器中打开 {CONSOLE_URL}。")
         else:
-            self._log(f"Console not ready yet: {CONSOLE_URL}")
+            self._log(f"控制台尚未就绪：{CONSOLE_URL}")
 
     def open_status(self) -> None:
         webbrowser.open(f"http://{STATUS_HOST}:{STATUS_PORT}/status")
-        self._log("Opened status JSON.")
+        self._log("已打开状态 JSON。")
 
     def open_logs(self) -> None:
         try:
@@ -651,7 +651,7 @@ class Launcher:
             else:
                 webbrowser.open(f"file://{LOG_PATH}")
         except Exception as e:
-            self._log(f"Failed to open log: {e}")
+            self._log(f"打开日志失败：{e}")
 
     def quit_app(self) -> None:
         self.stop_all()
@@ -729,7 +729,7 @@ def _poll_gui(window, launcher: Launcher, api: _Api) -> None:
 # ---------------------------------------------------------------------------
 def main() -> int:
     launcher = Launcher()
-    launcher._log(f"{APP_NAME} v{APP_VERSION} starting up...")
+    launcher._log(f"{APP_NAME} v{APP_VERSION} 启动中…")
     launcher.start_status_server()
     launcher.start_gui_server()
 
@@ -761,10 +761,10 @@ def main() -> int:
     threading.Thread(target=poll_loop, daemon=True).start()
 
     launcher._log(
-        f"{APP_NAME} ready. Starting system-tray icon and main window..."
+        f"{APP_NAME} 已就绪，正在启动系统托盘图标和主窗口…"
     )
     webview.start(gui=None, debug=False)
-    launcher._log("Main window closed, cleaning up...")
+    launcher._log("主窗口已关闭，正在清理…")
     launcher.quit_app()
     return 0
 
