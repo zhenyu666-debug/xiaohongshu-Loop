@@ -1,0 +1,773 @@
+"""Unified Console desktop launcher (GUI).
+
+A real Windows GUI window (pywebview + system HTML/CSS) that:
+  * shows live status of the three FastAPI services (pbp-api 8090,
+    lakehouse-api 8091, xhs-saas 8080) and a rolling log tail
+  * starts them as local uvicorn subprocesses (no Docker required)
+  * adds a Windows system-tray icon with the same Start / Stop / Quit menu
+  * exposes a status server on 127.0.0.1:8765 for scripting/automation
+
+Run as ``python scripts/console_gui.py`` or build a single ``.exe`` via
+``pyinstaller`` (see ``scripts/build_launcher.py``).
+
+Why pywebview and not Tkinter?  Tkinter is not guaranteed to be installed
+in minimal CPython distributions on Windows.  pywebview uses the
+already-installed WebView2 runtime (Win10/11 default), ships as a pure-
+Python wheel, and gives us proper HTML/CSS rendering - exactly the
+"Unified Console" experience the project is aiming for.
+"""
+
+from __future__ import annotations
+
+import json
+import os
+import queue
+import subprocess
+import sys
+import threading
+import time
+import urllib.request
+import webbrowser
+import zlib
+import struct
+from dataclasses import dataclass
+from datetime import datetime
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from pathlib import Path
+from typing import Optional
+
+APP_NAME = "xhs-saas Unified Console"
+APP_VERSION = "0.1.0"
+
+REPO_ROOT = Path(__file__).resolve().parent.parent
+LOG_DIR = REPO_ROOT / "logs"
+LOG_PATH = LOG_DIR / "launcher.log"
+STATUS_HOST = "127.0.0.1"
+STATUS_PORT = 8765
+LOCAL_GUI_PORT = 8766
+
+SERVICES = [
+    {
+        "name": "pbp-api",
+        "cwd": REPO_ROOT / "donor-screener-pbp",
+        "module": "pbp_api.main:app",
+        "port": 8090,
+        "color": "#38bdf8",
+        "label": "donor screener - candidates API",
+    },
+    {
+        "name": "lakehouse-api",
+        "cwd": REPO_ROOT / "data-lakehouse",
+        "module": "lakehouse_api.main:app",
+        "port": 8091,
+        "color": "#a78bfa",
+        "label": "data lakehouse - analytics API",
+    },
+    {
+        "name": "xhs-saas",
+        "cwd": REPO_ROOT / "xiaohongshu-saas",
+        "module": "app.main:app",
+        "port": 8080,
+        "color": "#34d399",
+        "label": "xhs-saas gateway + UI host",
+    },
+]
+
+CONSOLE_URL = "http://127.0.0.1:8080/console/"
+
+
+# ---------------------------------------------------------------------------
+# Tiny PNG tray icon (32x32, slate disc + green centre)
+# ---------------------------------------------------------------------------
+def _png_icon_bytes() -> bytes:
+    w = h = 32
+    pixels = bytearray()
+    for _y in range(h):
+        pixels.append(0)
+        for x in range(w):
+            cx, cy = w / 2 - 0.5, h / 2 - 0.5
+            r = ((x - cx) ** 2 + (_y - cy) ** 2) ** 0.5
+            if r <= 5:
+                pixels += bytes((34, 197, 94, 255))
+            elif r <= 9:
+                pixels += bytes((30, 41, 59, 255))
+            elif r <= 14:
+                pixels += bytes((15, 23, 42, 255))
+            else:
+                pixels += bytes((0, 0, 0, 0))
+    raw = b"".join(b"\x00" + bytes(pixels[_y * w * 4:(_y + 1) * w * 4]) for _y in range(h))
+
+    def chunk(tag: bytes, data: bytes) -> bytes:
+        return (
+            struct.pack(">I", len(data))
+            + tag
+            + data
+            + struct.pack(">I", zlib.crc32(tag + data) & 0xFFFFFFFF)
+        )
+
+    signature = b"\x89PNG\r\n\x1a\n"
+    ihdr = struct.pack(">IIBBBBB", w, h, 8, 6, 0, 0, 0)
+    idat = zlib.compress(raw)
+    return signature + chunk(b"IHDR", ihdr) + chunk(b"IDAT", idat) + chunk(b"IEND", b"")
+
+
+# ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
+def _http_get(url: str, timeout: float = 0.6) -> bool:
+    try:
+        with urllib.request.urlopen(url, timeout=timeout) as resp:
+            return 200 <= resp.status < 500
+    except Exception:
+        return False
+
+
+def _terminate(proc: Optional[subprocess.Popen]) -> None:
+    if not proc or proc.poll() is not None:
+        return
+    try:
+        proc.terminate()
+        try:
+            proc.wait(timeout=3.0)
+        except subprocess.TimeoutExpired:
+            proc.kill()
+            proc.wait(timeout=2.0)
+    except Exception:
+        pass
+
+
+# ---------------------------------------------------------------------------
+# HTML / CSS / JS served to the pywebview window
+# ---------------------------------------------------------------------------
+GUI_HTML = r"""<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>__APP_NAME__</title>
+<style>
+  :root {
+    color-scheme: dark;
+    --bg: #0b1120;
+    --bg-2: #111c2f;
+    --card: #131e35;
+    --border: #1f2a44;
+    --fg: #e2e8f0;
+    --muted: #94a3b8;
+    --accent: #22c55e;
+    --warn: #facc15;
+    --danger: #ef4444;
+    --info: #38bdf8;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: "Segoe UI", "Inter", -apple-system, sans-serif;
+    background: linear-gradient(180deg, #0a1020 0%, #060912 100%);
+    color: var(--fg);
+    min-height: 100vh;
+    overflow: hidden;
+  }
+  header {
+    padding: 14px 18px;
+    border-bottom: 1px solid var(--border);
+    display: flex; align-items: center; justify-content: space-between;
+    background: rgba(10,16,32,0.85);
+    backdrop-filter: blur(8px);
+  }
+  header h1 { margin: 0; font-size: 14px; font-weight: 600; }
+  header .ver { color: var(--muted); font-size: 11px; }
+  .pill {
+    padding: 2px 8px; border-radius: 999px;
+    background: var(--bg-2); border: 1px solid var(--border);
+    font-size: 11px; color: var(--muted);
+  }
+  main {
+    display: grid;
+    grid-template-rows: auto 1fr;
+    gap: 12px;
+    padding: 14px 16px;
+    height: calc(100vh - 56px);
+  }
+  .toolbar {
+    display: flex; gap: 8px; flex-wrap: wrap;
+  }
+  button {
+    background: #1f2937;
+    color: var(--fg);
+    border: 1px solid #2a3a55;
+    border-radius: 6px;
+    padding: 8px 14px;
+    font-size: 12px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background 120ms, transform 80ms;
+  }
+  button:hover:not(:disabled) { background: #2a3a55; }
+  button:active:not(:disabled) { transform: translateY(1px); }
+  button:disabled { opacity: 0.45; cursor: not-allowed; }
+  .primary {
+    background: var(--accent); color: #052e16; border-color: #16a34a;
+  }
+  .primary:hover:not(:disabled) { background: #16a34a; color: #052e16; }
+  .danger {
+    background: #b91c1c; color: #fff; border-color: #ef4444;
+  }
+  .danger:hover:not(:disabled) { background: #ef4444; }
+  .grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 10px;
+  }
+  .card {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 12px;
+    display: flex; flex-direction: column; gap: 6px;
+  }
+  .card-head { display: flex; justify-content: space-between; align-items: center; }
+  .swatch { width: 10px; height: 10px; border-radius: 50%; }
+  .name { font-weight: 700; font-family: Consolas, monospace; font-size: 13px; }
+  .desc { color: var(--muted); font-size: 11px; min-height: 14px; }
+  .meta { font-size: 11px; color: var(--muted); }
+  .state {
+    font-weight: 700; font-size: 11px; padding: 3px 8px;
+    border-radius: 999px; display: inline-block;
+  }
+  .state.stopped { background: #1e293b; color: var(--muted); }
+  .state.starting { background: #422006; color: var(--warn); }
+  .state.healthy { background: #052e16; color: var(--accent); }
+  .state.error { background: #450a0a; color: var(--danger); }
+  pre.log {
+    margin: 0; background: #020617;
+    color: #cbd5f5; font-family: Consolas, monospace; font-size: 11px;
+    padding: 8px; border-radius: 8px; border: 1px solid var(--border);
+    height: 100%; overflow: auto; white-space: pre-wrap;
+  }
+  .log .err { color: #fca5a5; }
+  .log .sys { color: var(--warn); }
+  .log .s-pbp   { color: #38bdf8; }
+  .log .s-lake  { color: #a78bfa; }
+  .log .s-xhs   { color: #34d399; }
+  .footer {
+    text-align: center; color: var(--muted); font-size: 11px;
+    padding: 4px 0 12px;
+  }
+  .footer a { color: var(--info); text-decoration: none; }
+  .footer a:hover { text-decoration: underline; }
+  a.btn-link { text-decoration: none; }
+</style>
+</head>
+<body>
+<header>
+  <h1>__APP_NAME__</h1>
+  <div>
+    <span class="pill" id="overall">overall: --</span>
+    <span class="pill">v__APP_VERSION__</span>
+  </div>
+</header>
+
+<main>
+  <div class="toolbar">
+    <button id="b-start"  class="primary">Start services</button>
+    <button id="b-stop"   class="danger"  disabled>Stop services</button>
+    <button id="b-open"                    disabled>Open console in browser</button>
+    <button id="b-status">Show status JSON</button>
+    <button id="b-logs">Open log file</button>
+    <button id="b-quit" class="danger">Quit</button>
+  </div>
+
+  <div class="grid" id="cards">
+    __SERVICE_CARDS__
+  </div>
+
+  <pre class="log" id="log"></pre>
+</main>
+
+<div class="footer">
+  Console URL once healthy:
+  <a id="url" href="#" class="btn-link">__CONSOLE_URL__</a>
+  &nbsp;|&nbsp;
+  Status: <a href="http://__STATUS_HOST__:__STATUS_PORT__/status" target="_blank">http://__STATUS_HOST__:__STATUS_PORT__/status</a>
+</div>
+
+<script>
+  const urlEl = document.getElementById('url');
+  urlEl.addEventListener('click', (e) => { e.preventDefault(); pywebview.api.open_console(); });
+  document.getElementById('b-start').onclick  = () => pywebview.api.start_all();
+  document.getElementById('b-stop').onclick   = () => pywebview.api.stop_all();
+  document.getElementById('b-open').onclick   = () => pywebview.api.open_console();
+  document.getElementById('b-status').onclick = () => pywebview.api.open_status();
+  document.getElementById('b-logs').onclick   = () => pywebview.api.open_logs();
+  document.getElementById('b-quit').onclick   = () => pywebview.api.quit_app();
+
+  const cardEls = __CARD_INDEX__;
+  function escapeHtml(s) {
+    return (s ?? '').toString()
+      .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  }
+  function setState(name, kind, msg) {
+    const card = cardEls[name];
+    if (!card) return;
+    card.state.className = 'state ' + kind;
+    card.state.textContent = msg;
+    card.swatch.style.background = (kind === 'healthy') ? '#22c55e'
+      : (kind === 'error') ? '#ef4444'
+      : (kind === 'starting') ? '#facc15' : '#475569';
+    card.meta.textContent = 'port ' + card.port;
+  }
+  function appendLog(line, cls) {
+    const el = document.getElementById('log');
+    el.insertAdjacentHTML('beforeend',
+      '<span class="' + (cls || '') + '">' + escapeHtml(line) + '</span>\n');
+    el.scrollTop = el.scrollHeight;
+    // cap rendered lines at 500
+    while (el.childNodes.length > 500) el.removeChild(el.firstChild);
+  }
+  window.updateState = (payload) => {
+    const data = JSON.parse(payload);
+    const order = ['pbp-api', 'lakehouse-api', 'xhs-saas'];
+    let anyAlive = false; let allHealthy = true;
+    for (const n of order) {
+      const sv = data.services[n];
+      let kind, msg;
+      if (!sv.running) { kind = 'stopped'; msg = '* stopped'; allHealthy = false; }
+      else if (sv.healthy) { kind = 'healthy'; msg = '* healthy'; anyAlive = true; }
+      else { kind = 'starting'; msg = '* starting...'; anyAlive = true; allHealthy = false; }
+      setState(n, kind, msg);
+    }
+    document.getElementById('overall').textContent =
+      !anyAlive ? 'overall: idle'
+      : (allHealthy ? 'overall: all healthy' : 'overall: starting');
+    document.getElementById('b-start').disabled = anyAlive;
+    document.getElementById('b-stop').disabled = !anyAlive;
+    document.getElementById('b-open').disabled = !allHealthy;
+  };
+  window.appendLog = (line, cls) => appendLog(line, cls);
+</script>
+</body>
+</html>
+"""
+
+
+def _build_service_cards() -> str:
+    cards = []
+    for svc in SERVICES:
+        cards.append(
+            f"""
+      <div class="card">
+        <div class="card-head">
+          <span class="name">{svc['name']}</span>
+          <span class="state stopped" data-name="{svc['name']}">* stopped</span>
+        </div>
+        <div class="card-head">
+          <span class="swatch" style="background:#475569"></span>
+          <span class="meta">port {svc['port']}</span>
+        </div>
+        <div class="desc">{svc['label']}</div>
+      </div>"""
+        )
+    return "".join(cards)
+
+
+def _build_card_index() -> str:
+    return (
+        "{"
+        + ", ".join(
+            f"'{svc['name']}': {{state: document.querySelector('.state[data-name=\\\"{svc['name']}\\\"]'),"
+            f" swatch: document.querySelectorAll('.swatch')[{i}],"
+            f" port: {svc['port']}}}"
+            for i, svc in enumerate(SERVICES)
+        )
+        + "}"
+    )
+
+
+def render_gui_html() -> str:
+    return (
+        GUI_HTML
+        .replace("__APP_NAME__", APP_NAME)
+        .replace("__APP_VERSION__", APP_VERSION)
+        .replace("__CONSOLE_URL__", CONSOLE_URL)
+        .replace("__STATUS_HOST__", STATUS_HOST)
+        .replace("__STATUS_PORT__", str(STATUS_PORT))
+        .replace("__SERVICE_CARDS__", _build_service_cards())
+        .replace("__CARD_INDEX__", _build_card_index())
+    )
+
+
+# ---------------------------------------------------------------------------
+# Local static-file HTTP server hosting the HTML on 127.0.0.1:8766
+# (pywebview needs an http URL, not a data: URL, on Windows)
+# ---------------------------------------------------------------------------
+class _GuiHandler(BaseHTTPRequestHandler):
+    gui_html: str = "<h1>loading...</h1>"
+
+    def log_message(self, *_args) -> None:
+        pass
+
+    def do_GET(self) -> None:  # noqa: N802
+        if self.path in ("/", "/index.html"):
+            body = self.gui_html.encode("utf-8")
+            self.send_response(200)
+            self.send_header("Content-Type", "text/html; charset=utf-8")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+            return
+        self.send_response(404)
+        self.end_headers()
+
+
+# ---------------------------------------------------------------------------
+# Application state
+# ---------------------------------------------------------------------------
+@dataclass
+class ServiceState:
+    cfg: dict
+    proc: Optional[subprocess.Popen] = None
+    healthy: bool = False
+    started_at: Optional[float] = None
+    last_error: str = ""
+
+
+class Launcher:
+    def __init__(self) -> None:
+        self.states: dict = {s["name"]: ServiceState(cfg=s) for s in SERVICES}
+        self._stopping = False
+        self._supervisor: Optional[threading.Thread] = None
+        self._status_server: Optional[ThreadingHTTPServer] = None
+        self._status_thread: Optional[threading.Thread] = None
+        self._gui_server: Optional[ThreadingHTTPServer] = None
+        self._gui_thread: Optional[threading.Thread] = None
+        self._log_lock = threading.Lock()
+        self._log_q: "queue.Queue[tuple[str,str]]" = queue.Queue()
+        self._window = None
+        self._tray_icon = None
+        LOG_DIR.mkdir(parents=True, exist_ok=True)
+
+    # ---------------- logging ----------------
+    def _log(self, msg: str) -> None:
+        ts = datetime.now().strftime("%H:%M:%S")
+        line = f"[{ts}] {msg}"
+        print(line, flush=True)
+        with self._log_lock:
+            try:
+                with LOG_PATH.open("a", encoding="utf-8") as f:
+                    f.write(f"[{datetime.now().isoformat(timespec='seconds')}] {msg}\n")
+            except Exception:
+                pass
+        self._log_q.put(("sys", msg))
+
+    # ---------------- lifecycle ----------------
+    def start_all(self) -> str:
+        if any(st.proc and st.proc.poll() is None for st in self.states.values()):
+            self._log("Services already running.")
+            return "already-running"
+        self._log("Starting three services (uvicorn, local)...")
+        for svc in SERVICES:
+            self._spawn(svc["name"])
+        if self._supervisor is None or not self._supervisor.is_alive():
+            self._supervisor = threading.Thread(target=self._supervise, daemon=True)
+            self._supervisor.start()
+        return "started"
+
+    def _spawn(self, name: str) -> None:
+        st = self.states[name]
+        if st.proc and st.proc.poll() is None:
+            return
+        cfg = st.cfg
+        env = os.environ.copy()
+        env["PYTHONUNBUFFERED"] = "1"
+        env["PYTHONIOENCODING"] = "utf-8"
+        env["APP_HOST"] = "127.0.0.1"
+        env["APP_PORT"] = str(cfg["port"])
+        env["PBP_API_URL"] = "http://127.0.0.1:8090"
+        env["LAKEHOUSE_API_URL"] = "http://127.0.0.1:8091"
+        try:
+            proc = subprocess.Popen(
+                [
+                    sys.executable,
+                    "-m", "uvicorn",
+                    cfg["module"],
+                    "--host", "127.0.0.1",
+                    "--port", str(cfg["port"]),
+                    "--log-level", "info",
+                ],
+                cwd=str(cfg["cwd"]),
+                env=env,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
+                creationflags=subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0,
+            )
+        except FileNotFoundError as e:
+            st.last_error = f"spawn failed: {e}"
+            self._log(f"[{name}] failed to spawn: {e}")
+            return
+        st.proc = proc
+        st.started_at = time.time()
+        st.last_error = ""
+        self._log(f"[{name}] spawned pid={proc.pid} on port {cfg['port']}")
+        threading.Thread(
+            target=self._reader_thread, args=(name, proc.stdout), daemon=True
+        ).start()
+
+    def _reader_thread(self, name: str, stream) -> None:
+        for raw in iter(stream.readline, b""):
+            try:
+                line = raw.decode("utf-8", errors="replace").rstrip()
+            except Exception:
+                continue
+            if line:
+                self._log(f"[{name}] {line}")
+                cls = "s-" + name.split("-")[0] if "-" in name else ""
+                self._log_q.put((cls, line))
+        stream.close()
+
+    def _supervise(self) -> None:
+        all_ready_logged = False
+        while not self._stopping:
+            for svc in SERVICES:
+                st = self.states[svc["name"]]
+                if not st.proc:
+                    st.healthy = False
+                    continue
+                if st.proc.poll() is not None:
+                    st.healthy = False
+                    st.last_error = f"exited with code {st.proc.returncode}"
+                    continue
+                url = f"http://127.0.0.1:{svc['port']}/healthz"
+                ok = _http_get(url, timeout=0.6)
+                if ok and not st.healthy:
+                    self._log(f"[{svc['name']}] healthy at {url}")
+                st.healthy = ok
+            ready = all(self.states[s["name"]].healthy for s in SERVICES)
+            if ready and not all_ready_logged:
+                all_ready_logged = True
+                self._log("All three services are healthy.")
+                self._log(f"Console URL: {CONSOLE_URL}")
+            elif not ready:
+                all_ready_logged = False
+            time.sleep(1.5)
+
+    def stop_all(self) -> str:
+        self._log("Stopping services...")
+        self._stopping = True
+        for st in self.states.values():
+            _terminate(st.proc)
+            st.proc = None
+            st.healthy = False
+        self._stopping = False
+        self._log("All services stopped.")
+        return "stopped"
+
+    # ---------------- status ----------------
+    def snapshot(self) -> dict:
+        out: dict = {
+            "console_url": CONSOLE_URL,
+            "all_healthy": False,
+            "services": {},
+        }
+        all_healthy = True
+        any_proc = False
+        for svc in SERVICES:
+            st = self.states[svc["name"]]
+            running = bool(st.proc and st.proc.poll() is None)
+            if running:
+                any_proc = True
+            if not st.healthy:
+                all_healthy = False
+            out["services"][svc["name"]] = {
+                "port": svc["port"],
+                "running": running,
+                "healthy": st.healthy,
+                "last_error": st.last_error,
+            }
+        out["all_healthy"] = all_healthy and any_proc
+        return out
+
+    # ---------------- servers ----------------
+    def start_status_server(self) -> None:
+        launcher = self
+
+        class Handler(BaseHTTPRequestHandler):
+            def log_message(self, *_args) -> None:
+                pass
+
+            def do_GET(self) -> None:  # noqa: N802
+                if self.path in ("/", "/status"):
+                    body = json.dumps(launcher.snapshot(), indent=2).encode("utf-8")
+                    self.send_response(200)
+                    self.send_header("Content-Type", "application/json")
+                    self.send_header("Content-Length", str(len(body)))
+                    self.end_headers()
+                    self.wfile.write(body)
+                    return
+                self.send_response(404)
+                self.end_headers()
+
+        try:
+            self._status_server = ThreadingHTTPServer((STATUS_HOST, STATUS_PORT), Handler)
+        except OSError as e:
+            self._log(f"Status server failed to bind: {e}")
+            return
+        self._status_thread = threading.Thread(
+            target=self._status_server.serve_forever, daemon=True
+        )
+        self._status_thread.start()
+        self._log(f"Status: http://{STATUS_HOST}:{STATUS_PORT}/status")
+
+    def start_gui_server(self) -> None:
+        _GuiHandler.gui_html = render_gui_html()
+        try:
+            self._gui_server = ThreadingHTTPServer(
+                ("127.0.0.1", LOCAL_GUI_PORT), _GuiHandler
+            )
+        except OSError as e:
+            self._log(f"GUI server failed to bind: {e}")
+            return
+        self._gui_thread = threading.Thread(
+            target=self._gui_server.serve_forever, daemon=True
+        )
+        self._gui_thread.start()
+        self._log(f"GUI: http://127.0.0.1:{LOCAL_GUI_PORT}/")
+
+    # ---------------- tray / browser actions ----------------
+    def open_console(self) -> None:
+        if _http_get(CONSOLE_URL, timeout=1.0):
+            webbrowser.open(CONSOLE_URL)
+            self._log(f"Opened {CONSOLE_URL} in default browser.")
+        else:
+            self._log(f"Console not ready yet: {CONSOLE_URL}")
+
+    def open_status(self) -> None:
+        webbrowser.open(f"http://{STATUS_HOST}:{STATUS_PORT}/status")
+        self._log("Opened status JSON.")
+
+    def open_logs(self) -> None:
+        try:
+            if os.name == "nt":
+                os.startfile(str(LOG_PATH))  # type: ignore[attr-defined]
+            else:
+                webbrowser.open(f"file://{LOG_PATH}")
+        except Exception as e:
+            self._log(f"Failed to open log: {e}")
+
+    def quit_app(self) -> None:
+        self.stop_all()
+        for srv in (self._status_server, self._gui_server):
+            try:
+                if srv:
+                    srv.shutdown()
+            except Exception:
+                pass
+        try:
+            if self._tray_icon:
+                self._tray_icon.stop()
+        except Exception:
+            pass
+        try:
+            if self._window:
+                self._window.destroy()
+        except Exception:
+            pass
+        sys.exit(0)
+
+
+# ---------------------------------------------------------------------------
+# API exposed to the pywebview JS
+# ---------------------------------------------------------------------------
+class _Api:
+    def __init__(self, launcher: Launcher) -> None:
+        self.launcher = launcher
+
+    def start_all(self) -> str:
+        return self.launcher.start_all()
+
+    def stop_all(self) -> str:
+        return self.launcher.stop_all()
+
+    def open_console(self) -> None:
+        return self.launcher.open_console()
+
+    def open_status(self) -> None:
+        return self.launcher.open_status()
+
+    def open_logs(self) -> None:
+        return self.launcher.open_logs()
+
+    def quit_app(self) -> None:
+        return self.launcher.quit_app()
+
+    def get_state(self) -> str:
+        return json.dumps(self.launcher.snapshot())
+
+
+# ---------------------------------------------------------------------------
+# pywebview polling loop (drives live updates into the HTML)
+# ---------------------------------------------------------------------------
+def _poll_gui(window, launcher: Launcher, api: _Api) -> None:
+    try:
+        state = json.dumps(launcher.snapshot())
+        window.evaluate_js(f"updateState({json.dumps(state)})")
+    except Exception:
+        pass
+    try:
+        while True:
+            tag, line = launcher._log_q.get_nowait()
+            window.evaluate_js(
+                f"appendLog({json.dumps(line + chr(10))}, {json.dumps(tag)})"
+            )
+    except queue.Empty:
+        pass
+    except Exception:
+        pass
+
+
+# ---------------------------------------------------------------------------
+# Entry point
+# ---------------------------------------------------------------------------
+def main() -> int:
+    launcher = Launcher()
+    launcher._log(f"{APP_NAME} v{APP_VERSION} starting up...")
+    launcher.start_status_server()
+    launcher.start_gui_server()
+
+    import webview
+
+    api = _Api(launcher)
+    gui_url = f"http://127.0.0.1:{LOCAL_GUI_PORT}/"
+
+    window = webview.create_window(
+        APP_NAME,
+        url=gui_url,
+        width=900,
+        height=620,
+        resizable=True,
+        text_select=True,
+        js_api=api,
+        confirm_close=True,
+    )
+    launcher._window = window
+
+    def poll_loop() -> None:
+        while True:
+            try:
+                _poll_gui(window, launcher, api)
+            except Exception:
+                pass
+            time.sleep(0.5)
+
+    threading.Thread(target=poll_loop, daemon=True).start()
+
+    launcher._log(
+        f"{APP_NAME} ready. Starting system-tray icon and main window..."
+    )
+    webview.start(gui=None, debug=False)
+    launcher._log("Main window closed, cleaning up...")
+    launcher.quit_app()
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
