@@ -1,0 +1,239 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 420" role="img" aria-label="xiaohongshu-Loop · cyber fire-ant nest architecture">
+<defs>
+
+  <radialGradient id="bg" cx="50%" cy="55%" r="70%">
+    <stop offset="0%" stop-color="#101a30"/>
+    <stop offset="55%" stop-color="#0a1020"/>
+    <stop offset="100%" stop-color="#04060d"/>
+  </radialGradient>
+  <radialGradient id="queen" cx="50%" cy="50%" r="50%">
+    <stop offset="0%" stop-color="#ffb3c1" stop-opacity="0.95"/>
+    <stop offset="35%" stop-color="#FF2442" stop-opacity="0.9"/>
+    <stop offset="80%" stop-color="#7a0d20" stop-opacity="0.7"/>
+    <stop offset="100%" stop-color="#3b0712" stop-opacity="0"/>
+  </radialGradient>
+  <radialGradient id="queenCore" cx="50%" cy="50%" r="50%">
+    <stop offset="0%" stop-color="#ffffff"/>
+    <stop offset="30%" stop-color="#ffd6dd"/>
+    <stop offset="100%" stop-color="#FF2442"/>
+  </radialGradient>
+  <linearGradient id="leg" x1="0%" y1="0%" x2="100%" y2="0%">
+    <stop offset="0%" stop-color="#FF2442" stop-opacity="0"/>
+    <stop offset="50%" stop-color="#ff6b81" stop-opacity="1"/>
+    <stop offset="100%" stop-color="#FF2442" stop-opacity="0"/>
+  </linearGradient>
+  <filter id="glow" x="-50%" y="-50%" width="200%" height="200%">
+    <feGaussianBlur stdDeviation="3" result="blur"/>
+    <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
+  </filter>
+  <filter id="bigGlow" x="-100%" y="-100%" width="300%" height="300%">
+    <feGaussianBlur stdDeviation="10" result="b1"/>
+    <feGaussianBlur stdDeviation="22" result="b2"/>
+    <feMerge><feMergeNode in="b2"/><feMergeNode in="b1"/><feMergeNode in="SourceGraphic"/></feMerge>
+  </filter>
+  <pattern id="grid" width="40" height="40" patternUnits="userSpaceOnUse">
+    <path d="M40 0H0V40" fill="none" stroke="#0e1726" stroke-width="0.5" opacity="0.55"/>
+  </pattern>
+
+</defs>
+<rect width="1280" height="420" fill="url(#bg)"/>
+<rect width="1280" height="420" fill="url(#grid)"/>
+<circle cx="640.0" cy="220.0" r="155" fill="none" stroke="#FF2442" stroke-opacity="0.10" stroke-width="1" stroke-dasharray="2 6"/>
+<circle cx="640.0" cy="220.0" r="220" fill="none" stroke="#22d3ee" stroke-opacity="0.06" stroke-width="1" stroke-dasharray="1 9"/>
+<polygon points="714.0,220.0 707.0,232.1 693.0,232.1 684.0,272.0 677.0,284.1 663.0,284.1 624.0,272.0 617.0,284.1 603.0,284.1 594.0,220.0 587.0,232.1 573.0,232.1 624.0,168.0 617.0,180.2 603.0,180.2 684.0,168.0 677.0,180.2 663.0,180.2" fill="none" stroke="#FF2442" stroke-opacity="0.06" stroke-width="0.6"/>
+<polygon points="745.5,229.2 738.5,241.3 724.5,241.3 728.7,273.7 721.7,285.8 707.7,285.8 691.8,303.9 684.8,316.0 670.8,316.0 644.8,311.5 637.8,323.7 623.8,323.7 600.3,294.7 593.3,306.8 579.3,306.8 570.1,257.8 563.1,269.9 549.1,269.9 562.5,210.8 555.5,222.9 541.5,222.9 579.3,166.3 572.3,178.4 558.3,178.4 616.2,136.1 609.2,148.3 595.2,148.3 663.2,128.5 656.2,140.6 642.2,140.6 707.7,145.3 700.7,157.4 686.7,157.4 737.9,182.2 730.9,194.3 716.9,194.3" fill="none" stroke="#FF2442" stroke-opacity="0.06" stroke-width="0.6"/>
+<polygon points="784.0,220.0 777.0,232.1 763.0,232.1 776.2,264.5 769.2,276.6 755.2,276.6 753.6,303.6 746.6,315.7 732.6,315.7 719.0,332.6 712.0,344.7 698.0,344.7 676.6,348.0 669.6,360.1 655.6,360.1 631.4,348.0 624.4,360.1 610.4,360.1 589.0,332.6 582.0,344.7 568.0,344.7 554.4,303.6 547.4,315.7 533.4,315.7 531.8,264.5 524.8,276.6 510.8,276.6 524.0,220.0 517.0,232.1 503.0,232.1 531.8,175.5 524.8,187.7 510.8,187.7 554.4,136.4 547.4,148.6 533.4,148.6 589.0,107.4 582.0,119.5 568.0,119.5 631.4,92.0 624.4,104.1 610.4,104.1 676.6,92.0 669.6,104.1 655.6,104.1 719.0,107.4 712.0,119.5 698.0,119.5 753.6,136.4 746.6,148.6 732.6,148.6 776.2,175.5 769.2,187.7 755.2,187.7" fill="none" stroke="#FF2442" stroke-opacity="0.06" stroke-width="0.6"/>
+<path d="M636.9 110.0 Q630.1 168.6 640.0 220.0" fill="none" stroke="#22d3ee" stroke-opacity="0.18" stroke-width="0.7"/>
+<path d="M742.0 178.9 Q691.9 196.2 640.0 220.0" fill="none" stroke="#22d3ee" stroke-opacity="0.18" stroke-width="0.7"/>
+<path d="M710.8 304.2 Q675.6 251.0 640.0 220.0" fill="none" stroke="#22d3ee" stroke-opacity="0.18" stroke-width="0.7"/>
+<path d="M576.3 309.7 Q597.8 255.0 640.0 220.0" fill="none" stroke="#22d3ee" stroke-opacity="0.18" stroke-width="0.7"/>
+<path d="M535.0 187.3 Q595.3 194.6 640.0 220.0" fill="none" stroke="#22d3ee" stroke-opacity="0.18" stroke-width="0.7"/>
+<line x1="636.9" y1="110.0" x2="742.0" y2="178.9" stroke="#22d3ee" stroke-opacity="0.10" stroke-width="0.6" stroke-dasharray="2 4"/>
+<line x1="636.9" y1="110.0" x2="710.8" y2="304.2" stroke="#22d3ee" stroke-opacity="0.10" stroke-width="0.6" stroke-dasharray="2 4"/>
+<line x1="742.0" y1="178.9" x2="710.8" y2="304.2" stroke="#22d3ee" stroke-opacity="0.10" stroke-width="0.6" stroke-dasharray="2 4"/>
+<line x1="742.0" y1="178.9" x2="576.3" y2="309.7" stroke="#22d3ee" stroke-opacity="0.10" stroke-width="0.6" stroke-dasharray="2 4"/>
+<line x1="710.8" y1="304.2" x2="576.3" y2="309.7" stroke="#22d3ee" stroke-opacity="0.10" stroke-width="0.6" stroke-dasharray="2 4"/>
+<line x1="710.8" y1="304.2" x2="535.0" y2="187.3" stroke="#22d3ee" stroke-opacity="0.10" stroke-width="0.6" stroke-dasharray="2 4"/>
+<line x1="576.3" y1="309.7" x2="535.0" y2="187.3" stroke="#22d3ee" stroke-opacity="0.10" stroke-width="0.6" stroke-dasharray="2 4"/>
+<line x1="576.3" y1="309.7" x2="636.9" y2="110.0" stroke="#22d3ee" stroke-opacity="0.10" stroke-width="0.6" stroke-dasharray="2 4"/>
+<line x1="535.0" y1="187.3" x2="636.9" y2="110.0" stroke="#22d3ee" stroke-opacity="0.10" stroke-width="0.6" stroke-dasharray="2 4"/>
+<line x1="535.0" y1="187.3" x2="742.0" y2="178.9" stroke="#22d3ee" stroke-opacity="0.10" stroke-width="0.6" stroke-dasharray="2 4"/>
+<path d="M632.3 45.2 Q639.2 143.3 640.0 220.0" fill="none" stroke="#a78bfa" stroke-opacity="0.18" stroke-width="0.7"/>
+<path d="M765.3 97.8 Q700.2 170.3 640.0 220.0" fill="none" stroke="#a78bfa" stroke-opacity="0.18" stroke-width="0.7"/>
+<path d="M814.5 207.3 Q735.9 208.6 640.0 220.0" fill="none" stroke="#a78bfa" stroke-opacity="0.18" stroke-width="0.7"/>
+<path d="M770.6 336.5 Q696.1 273.7 640.0 220.0" fill="none" stroke="#a78bfa" stroke-opacity="0.18" stroke-width="0.7"/>
+<path d="M631.2 394.8 Q627.9 309.3 640.0 220.0" fill="none" stroke="#a78bfa" stroke-opacity="0.18" stroke-width="0.7"/>
+<path d="M513.5 341.0 Q573.7 281.6 640.0 220.0" fill="none" stroke="#a78bfa" stroke-opacity="0.18" stroke-width="0.7"/>
+<path d="M465.4 232.2 Q542.1 219.1 640.0 220.0" fill="none" stroke="#a78bfa" stroke-opacity="0.18" stroke-width="0.7"/>
+<path d="M519.9 92.7 Q578.2 151.9 640.0 220.0" fill="none" stroke="#a78bfa" stroke-opacity="0.18" stroke-width="0.7"/>
+<line x1="632.3" y1="45.2" x2="765.3" y2="97.8" stroke="#a78bfa" stroke-opacity="0.10" stroke-width="0.6" stroke-dasharray="2 4"/>
+<line x1="632.3" y1="45.2" x2="814.5" y2="207.3" stroke="#a78bfa" stroke-opacity="0.10" stroke-width="0.6" stroke-dasharray="2 4"/>
+<line x1="765.3" y1="97.8" x2="814.5" y2="207.3" stroke="#a78bfa" stroke-opacity="0.10" stroke-width="0.6" stroke-dasharray="2 4"/>
+<line x1="765.3" y1="97.8" x2="770.6" y2="336.5" stroke="#a78bfa" stroke-opacity="0.10" stroke-width="0.6" stroke-dasharray="2 4"/>
+<line x1="814.5" y1="207.3" x2="770.6" y2="336.5" stroke="#a78bfa" stroke-opacity="0.10" stroke-width="0.6" stroke-dasharray="2 4"/>
+<line x1="814.5" y1="207.3" x2="631.2" y2="394.8" stroke="#a78bfa" stroke-opacity="0.10" stroke-width="0.6" stroke-dasharray="2 4"/>
+<line x1="770.6" y1="336.5" x2="631.2" y2="394.8" stroke="#a78bfa" stroke-opacity="0.10" stroke-width="0.6" stroke-dasharray="2 4"/>
+<line x1="770.6" y1="336.5" x2="513.5" y2="341.0" stroke="#a78bfa" stroke-opacity="0.10" stroke-width="0.6" stroke-dasharray="2 4"/>
+<line x1="631.2" y1="394.8" x2="513.5" y2="341.0" stroke="#a78bfa" stroke-opacity="0.10" stroke-width="0.6" stroke-dasharray="2 4"/>
+<line x1="631.2" y1="394.8" x2="465.4" y2="232.2" stroke="#a78bfa" stroke-opacity="0.10" stroke-width="0.6" stroke-dasharray="2 4"/>
+<line x1="513.5" y1="341.0" x2="465.4" y2="232.2" stroke="#a78bfa" stroke-opacity="0.10" stroke-width="0.6" stroke-dasharray="2 4"/>
+<line x1="513.5" y1="341.0" x2="519.9" y2="92.7" stroke="#a78bfa" stroke-opacity="0.10" stroke-width="0.6" stroke-dasharray="2 4"/>
+<line x1="465.4" y1="232.2" x2="519.9" y2="92.7" stroke="#a78bfa" stroke-opacity="0.10" stroke-width="0.6" stroke-dasharray="2 4"/>
+<line x1="465.4" y1="232.2" x2="632.3" y2="45.2" stroke="#a78bfa" stroke-opacity="0.10" stroke-width="0.6" stroke-dasharray="2 4"/>
+<line x1="519.9" y1="92.7" x2="632.3" y2="45.2" stroke="#a78bfa" stroke-opacity="0.10" stroke-width="0.6" stroke-dasharray="2 4"/>
+<line x1="519.9" y1="92.7" x2="765.3" y2="97.8" stroke="#a78bfa" stroke-opacity="0.10" stroke-width="0.6" stroke-dasharray="2 4"/>
+<path d="M643.3 -20.0 Q640.5 95.2 640.0 220.0" fill="none" stroke="#34d399" stroke-opacity="0.18" stroke-width="0.7"/>
+<path d="M769.7 18.0 Q709.6 112.9 640.0 220.0" fill="none" stroke="#34d399" stroke-opacity="0.18" stroke-width="0.7"/>
+<path d="M849.3 102.5 Q745.2 170.2 640.0 220.0" fill="none" stroke="#34d399" stroke-opacity="0.18" stroke-width="0.7"/>
+<path d="M879.8 228.8 Q754.8 235.9 640.0 220.0" fill="none" stroke="#34d399" stroke-opacity="0.18" stroke-width="0.7"/>
+<path d="M854.8 327.1 Q745.4 279.7 640.0 220.0" fill="none" stroke="#34d399" stroke-opacity="0.18" stroke-width="0.7"/>
+<path d="M771.4 420.8 Q705.4 309.4 640.0 220.0" fill="none" stroke="#34d399" stroke-opacity="0.18" stroke-width="0.7"/>
+<path d="M633.5 459.9 Q643.1 341.7 640.0 220.0" fill="none" stroke="#34d399" stroke-opacity="0.18" stroke-width="0.7"/>
+<path d="M507.7 420.3 Q569.4 324.8 640.0 220.0" fill="none" stroke="#34d399" stroke-opacity="0.18" stroke-width="0.7"/>
+<path d="M430.4 336.8 Q537.1 277.4 640.0 220.0" fill="none" stroke="#34d399" stroke-opacity="0.18" stroke-width="0.7"/>
+<path d="M400.4 207.0 Q530.8 212.9 640.0 220.0" fill="none" stroke="#34d399" stroke-opacity="0.18" stroke-width="0.7"/>
+<path d="M435.4 94.6 Q527.1 162.1 640.0 220.0" fill="none" stroke="#34d399" stroke-opacity="0.18" stroke-width="0.7"/>
+<path d="M524.9 9.4 Q594.3 122.4 640.0 220.0" fill="none" stroke="#34d399" stroke-opacity="0.18" stroke-width="0.7"/>
+<line x1="643.3" y1="-20.0" x2="769.7" y2="18.0" stroke="#34d399" stroke-opacity="0.10" stroke-width="0.6" stroke-dasharray="2 4"/>
+<line x1="643.3" y1="-20.0" x2="849.3" y2="102.5" stroke="#34d399" stroke-opacity="0.10" stroke-width="0.6" stroke-dasharray="2 4"/>
+<line x1="769.7" y1="18.0" x2="849.3" y2="102.5" stroke="#34d399" stroke-opacity="0.10" stroke-width="0.6" stroke-dasharray="2 4"/>
+<line x1="769.7" y1="18.0" x2="879.8" y2="228.8" stroke="#34d399" stroke-opacity="0.10" stroke-width="0.6" stroke-dasharray="2 4"/>
+<line x1="849.3" y1="102.5" x2="879.8" y2="228.8" stroke="#34d399" stroke-opacity="0.10" stroke-width="0.6" stroke-dasharray="2 4"/>
+<line x1="849.3" y1="102.5" x2="854.8" y2="327.1" stroke="#34d399" stroke-opacity="0.10" stroke-width="0.6" stroke-dasharray="2 4"/>
+<line x1="879.8" y1="228.8" x2="854.8" y2="327.1" stroke="#34d399" stroke-opacity="0.10" stroke-width="0.6" stroke-dasharray="2 4"/>
+<line x1="879.8" y1="228.8" x2="771.4" y2="420.8" stroke="#34d399" stroke-opacity="0.10" stroke-width="0.6" stroke-dasharray="2 4"/>
+<line x1="854.8" y1="327.1" x2="771.4" y2="420.8" stroke="#34d399" stroke-opacity="0.10" stroke-width="0.6" stroke-dasharray="2 4"/>
+<line x1="854.8" y1="327.1" x2="633.5" y2="459.9" stroke="#34d399" stroke-opacity="0.10" stroke-width="0.6" stroke-dasharray="2 4"/>
+<line x1="771.4" y1="420.8" x2="633.5" y2="459.9" stroke="#34d399" stroke-opacity="0.10" stroke-width="0.6" stroke-dasharray="2 4"/>
+<line x1="771.4" y1="420.8" x2="507.7" y2="420.3" stroke="#34d399" stroke-opacity="0.10" stroke-width="0.6" stroke-dasharray="2 4"/>
+<line x1="633.5" y1="459.9" x2="507.7" y2="420.3" stroke="#34d399" stroke-opacity="0.10" stroke-width="0.6" stroke-dasharray="2 4"/>
+<line x1="633.5" y1="459.9" x2="430.4" y2="336.8" stroke="#34d399" stroke-opacity="0.10" stroke-width="0.6" stroke-dasharray="2 4"/>
+<line x1="507.7" y1="420.3" x2="430.4" y2="336.8" stroke="#34d399" stroke-opacity="0.10" stroke-width="0.6" stroke-dasharray="2 4"/>
+<line x1="507.7" y1="420.3" x2="400.4" y2="207.0" stroke="#34d399" stroke-opacity="0.10" stroke-width="0.6" stroke-dasharray="2 4"/>
+<line x1="430.4" y1="336.8" x2="400.4" y2="207.0" stroke="#34d399" stroke-opacity="0.10" stroke-width="0.6" stroke-dasharray="2 4"/>
+<line x1="430.4" y1="336.8" x2="435.4" y2="94.6" stroke="#34d399" stroke-opacity="0.10" stroke-width="0.6" stroke-dasharray="2 4"/>
+<line x1="400.4" y1="207.0" x2="435.4" y2="94.6" stroke="#34d399" stroke-opacity="0.10" stroke-width="0.6" stroke-dasharray="2 4"/>
+<line x1="400.4" y1="207.0" x2="524.9" y2="9.4" stroke="#34d399" stroke-opacity="0.10" stroke-width="0.6" stroke-dasharray="2 4"/>
+<line x1="435.4" y1="94.6" x2="524.9" y2="9.4" stroke="#34d399" stroke-opacity="0.10" stroke-width="0.6" stroke-dasharray="2 4"/>
+<line x1="435.4" y1="94.6" x2="643.3" y2="-20.0" stroke="#34d399" stroke-opacity="0.10" stroke-width="0.6" stroke-dasharray="2 4"/>
+<line x1="524.9" y1="9.4" x2="643.3" y2="-20.0" stroke="#34d399" stroke-opacity="0.10" stroke-width="0.6" stroke-dasharray="2 4"/>
+<line x1="524.9" y1="9.4" x2="769.7" y2="18.0" stroke="#34d399" stroke-opacity="0.10" stroke-width="0.6" stroke-dasharray="2 4"/>
+<circle r="2.2" fill="#22d3ee" filter="url(#glow)"><animateMotion dur="6s" repeatCount="indefinite" path="M636.9 110.0 Q638.4 165.0 640.0 220.0"/></circle>
+<circle r="2.2" fill="#22d3ee" filter="url(#glow)"><animateMotion dur="6s" repeatCount="indefinite" path="M710.8 304.2 Q675.4 262.1 640.0 220.0"/></circle>
+<circle r="2.2" fill="#22d3ee" filter="url(#glow)"><animateMotion dur="6s" repeatCount="indefinite" path="M535.0 187.3 Q587.5 203.6 640.0 220.0"/></circle>
+<circle r="2.2" fill="#a78bfa" filter="url(#glow)"><animateMotion dur="8s" repeatCount="indefinite" path="M632.3 45.2 Q636.1 132.6 640.0 220.0"/></circle>
+<circle r="2.2" fill="#a78bfa" filter="url(#glow)"><animateMotion dur="8s" repeatCount="indefinite" path="M814.5 207.3 Q727.3 213.7 640.0 220.0"/></circle>
+<circle r="2.2" fill="#a78bfa" filter="url(#glow)"><animateMotion dur="8s" repeatCount="indefinite" path="M631.2 394.8 Q635.6 307.4 640.0 220.0"/></circle>
+<circle r="2.2" fill="#a78bfa" filter="url(#glow)"><animateMotion dur="8s" repeatCount="indefinite" path="M465.4 232.2 Q552.7 226.1 640.0 220.0"/></circle>
+<circle r="2.2" fill="#34d399" filter="url(#glow)"><animateMotion dur="10s" repeatCount="indefinite" path="M643.3 -20.0 Q641.6 100.0 640.0 220.0"/></circle>
+<circle r="2.2" fill="#34d399" filter="url(#glow)"><animateMotion dur="10s" repeatCount="indefinite" path="M849.3 102.5 Q744.6 161.2 640.0 220.0"/></circle>
+<circle r="2.2" fill="#34d399" filter="url(#glow)"><animateMotion dur="10s" repeatCount="indefinite" path="M854.8 327.1 Q747.4 273.5 640.0 220.0"/></circle>
+<circle r="2.2" fill="#34d399" filter="url(#glow)"><animateMotion dur="10s" repeatCount="indefinite" path="M633.5 459.9 Q636.8 340.0 640.0 220.0"/></circle>
+<circle r="2.2" fill="#34d399" filter="url(#glow)"><animateMotion dur="10s" repeatCount="indefinite" path="M430.4 336.8 Q535.2 278.4 640.0 220.0"/></circle>
+<circle r="2.2" fill="#34d399" filter="url(#glow)"><animateMotion dur="10s" repeatCount="indefinite" path="M435.4 94.6 Q537.7 157.3 640.0 220.0"/></circle>
+<polygon points="648.16,116.54 636.90,123.04 625.64,116.54 625.64,103.54 636.90,97.04 648.16,103.54" fill="#0a1226" stroke="#22d3ee" stroke-width="1.2" filter="url(#glow)"/>
+<circle cx="636.899867204909" cy="110.04369423878956" r="2" fill="#22d3ee"/>
+<text x="636.3" y="92.1" fill="#cbd5f5" font-size="10" font-family="Consolas, ui-monospace, monospace" text-anchor="end" opacity="0.85">账号池</text>
+<polygon points="753.31,185.44 742.05,191.94 730.79,185.44 730.79,172.44 742.05,165.94 753.31,172.44" fill="#0a1226" stroke="#22d3ee" stroke-width="1.2" filter="url(#glow)"/>
+<circle cx="742.0479356520011" cy="178.93640506281687" r="2" fill="#22d3ee"/>
+<text x="761.5" y="174.1" fill="#cbd5f5" font-size="10" font-family="Consolas, ui-monospace, monospace" text-anchor="start" opacity="0.85">内容工厂</text>
+<polygon points="722.04,310.70 710.78,317.20 699.52,310.70 699.52,297.70 710.78,291.20 722.04,297.70" fill="#0a1226" stroke="#22d3ee" stroke-width="1.2" filter="url(#glow)"/>
+<circle cx="710.7830363904799" cy="304.2007230333802" r="2" fill="#22d3ee"/>
+<text x="724.3" y="323.3" fill="#cbd5f5" font-size="10" font-family="Consolas, ui-monospace, monospace" text-anchor="start" opacity="0.85">调度器</text>
+<polygon points="587.55,316.17 576.29,322.67 565.03,316.17 565.03,303.17 576.29,296.67 587.55,303.17" fill="#0a1226" stroke="#22d3ee" stroke-width="1.2" filter="url(#glow)"/>
+<circle cx="576.2920474527325" cy="309.67327797195276" r="2" fill="#22d3ee"/>
+<text x="564.1" y="329.8" fill="#cbd5f5" font-size="10" font-family="Consolas, ui-monospace, monospace" text-anchor="end" opacity="0.85">风控</text>
+<polygon points="546.24,193.77 534.98,200.27 523.72,193.77 523.72,180.77 534.98,174.27 546.24,180.77" fill="#0a1226" stroke="#22d3ee" stroke-width="1.2" filter="url(#glow)"/>
+<circle cx="534.9809049300807" cy="187.27402147077584" r="2" fill="#22d3ee"/>
+<text x="514.9" y="184.0" fill="#cbd5f5" font-size="10" font-family="Consolas, ui-monospace, monospace" text-anchor="end" opacity="0.85">渠道适配器</text>
+<polygon points="640.91,50.17 632.25,55.17 623.59,50.17 623.59,40.17 632.25,35.17 640.91,40.17" fill="#0a1226" stroke="#a78bfa" stroke-width="1.2" filter="url(#glow)"/>
+<circle cx="632.2532233314531" cy="45.171548507550824" r="2" fill="#a78bfa"/>
+<text x="631.5" y="30.2" fill="#cbd5f5" font-size="10" font-family="Consolas, ui-monospace, monospace" text-anchor="end" opacity="0.85">模板</text>
+<polygon points="773.92,102.79 765.26,107.79 756.60,102.79 756.60,92.79 765.26,87.79 773.92,92.79" fill="#0a1226" stroke="#a78bfa" stroke-width="1.2" filter="url(#glow)"/>
+<circle cx="765.2607924201419" cy="97.79225113652527" r="2" fill="#a78bfa"/>
+<text x="778.1" y="88.2" fill="#cbd5f5" font-size="10" font-family="Consolas, ui-monospace, monospace" text-anchor="start" opacity="0.85">Cookie</text>
+<polygon points="823.20,212.32 814.54,217.32 805.88,212.32 805.88,202.32 814.54,197.32 823.20,202.32" fill="#0a1226" stroke="#a78bfa" stroke-width="1.2" filter="url(#glow)"/>
+<circle cx="814.5396864655311" cy="207.3154484307057" r="2" fill="#a78bfa"/>
+<text x="832.5" y="209.0" fill="#cbd5f5" font-size="10" font-family="Consolas, ui-monospace, monospace" text-anchor="start" opacity="0.85">代理池</text>
+<polygon points="779.24,341.50 770.58,346.50 761.92,341.50 761.92,331.50 770.58,326.50 779.24,331.50" fill="#0a1226" stroke="#a78bfa" stroke-width="1.2" filter="url(#glow)"/>
+<circle cx="770.5828762347996" cy="336.50370137573736" r="2" fill="#a78bfa"/>
+<text x="784.0" y="351.5" fill="#cbd5f5" font-size="10" font-family="Consolas, ui-monospace, monospace" text-anchor="start" opacity="0.85">浏览器池</text>
+<polygon points="639.81,399.78 631.15,404.78 622.49,399.78 622.49,389.78 631.15,384.78 639.81,389.78" fill="#0a1226" stroke="#a78bfa" stroke-width="1.2" filter="url(#glow)"/>
+<circle cx="631.1522356963299" cy="394.77619136148576" r="2" fill="#a78bfa"/>
+<text x="630.2" y="415.8" fill="#cbd5f5" font-size="10" font-family="Consolas, ui-monospace, monospace" text-anchor="end" opacity="0.85">OpenAI</text>
+<polygon points="522.20,345.96 513.54,350.96 504.88,345.96 504.88,335.96 513.54,330.96 522.20,335.96" fill="#0a1226" stroke="#a78bfa" stroke-width="1.2" filter="url(#glow)"/>
+<circle cx="513.5367569224269" cy="340.96300322951083" r="2" fill="#a78bfa"/>
+<text x="500.5" y="356.4" fill="#cbd5f5" font-size="10" font-family="Consolas, ui-monospace, monospace" text-anchor="end" opacity="0.85">SQLite/PG</text>
+<polygon points="474.09,237.23 465.43,242.23 456.77,237.23 456.77,227.23 465.43,222.23 474.09,227.23" fill="#0a1226" stroke="#a78bfa" stroke-width="1.2" filter="url(#glow)"/>
+<circle cx="465.4280092137644" cy="232.23192678732477" r="2" fill="#a78bfa"/>
+<text x="447.5" y="236.5" fill="#cbd5f5" font-size="10" font-family="Consolas, ui-monospace, monospace" text-anchor="end" opacity="0.85">Redis</text>
+<polygon points="528.54,97.74 519.88,102.74 511.22,97.74 511.22,87.74 519.88,82.74 528.54,87.74" fill="#0a1226" stroke="#a78bfa" stroke-width="1.2" filter="url(#glow)"/>
+<circle cx="519.8790983269605" cy="92.73661570877518" r="2" fill="#a78bfa"/>
+<text x="507.5" y="82.6" fill="#cbd5f5" font-size="10" font-family="Consolas, ui-monospace, monospace" text-anchor="end" opacity="0.85">Celery</text>
+<polygon points="650.21,-15.98 643.29,-11.98 636.36,-15.98 636.36,-23.98 643.29,-27.98 650.21,-23.98" fill="#0a1226" stroke="#34d399" stroke-width="1.2" filter="url(#glow)"/>
+<circle cx="643.285472932889" cy="-19.97751075383556" r="2" fill="#34d399"/>
+<text x="643.5" y="-33.0" fill="#cbd5f5" font-size="10" font-family="Consolas, ui-monospace, monospace" text-anchor="start" opacity="0.85">小红书</text>
+<polygon points="776.58,22.03 769.65,26.03 762.72,22.03 762.72,14.03 769.65,10.03 776.58,14.03" fill="#0a1226" stroke="#34d399" stroke-width="1.2" filter="url(#glow)"/>
+<circle cx="769.652996849203" cy="18.034407861089903" r="2" fill="#34d399"/>
+<text x="778.3" y="7.6" fill="#cbd5f5" font-size="10" font-family="Consolas, ui-monospace, monospace" text-anchor="start" opacity="0.85">抖音</text>
+<polygon points="856.19,106.48 849.26,110.48 842.33,106.48 842.33,98.48 849.26,94.48 856.19,98.48" fill="#0a1226" stroke="#34d399" stroke-width="1.2" filter="url(#glow)"/>
+<circle cx="849.2602627243989" cy="102.4834375736103" r="2" fill="#34d399"/>
+<text x="863.2" y="97.6" fill="#cbd5f5" font-size="10" font-family="Consolas, ui-monospace, monospace" text-anchor="start" opacity="0.85">快手</text>
+<polygon points="886.77,232.81 879.84,236.81 872.91,232.81 872.91,224.81 879.84,220.81 886.77,224.81" fill="#0a1226" stroke="#34d399" stroke-width="1.2" filter="url(#glow)"/>
+<circle cx="879.8382922898792" cy="228.80872019503948" r="2" fill="#34d399"/>
+<text x="895.8" y="232.4" fill="#cbd5f5" font-size="10" font-family="Consolas, ui-monospace, monospace" text-anchor="start" opacity="0.85">视频号</text>
+<polygon points="861.71,331.08 854.79,335.08 847.86,331.08 847.86,323.08 854.79,319.08 861.71,323.08" fill="#0a1226" stroke="#34d399" stroke-width="1.2" filter="url(#glow)"/>
+<circle cx="854.78670456317" cy="327.0825454632711" r="2" fill="#34d399"/>
+<text x="869.1" y="337.2" fill="#cbd5f5" font-size="10" font-family="Consolas, ui-monospace, monospace" text-anchor="start" opacity="0.85">B站</text>
+<polygon points="778.31,424.85 771.38,428.85 764.45,424.85 764.45,416.85 771.38,412.85 778.31,416.85" fill="#0a1226" stroke="#34d399" stroke-width="1.2" filter="url(#glow)"/>
+<circle cx="771.3814210727296" cy="420.8455182395418" r="2" fill="#34d399"/>
+<text x="780.1" y="437.2" fill="#cbd5f5" font-size="10" font-family="Consolas, ui-monospace, monospace" text-anchor="start" opacity="0.85">知乎</text>
+<polygon points="640.47,463.91 633.54,467.91 626.61,463.91 626.61,455.91 633.54,451.91 640.47,455.91" fill="#0a1226" stroke="#34d399" stroke-width="1.2" filter="url(#glow)"/>
+<circle cx="633.5412909481737" cy="459.9130781707905" r="2" fill="#34d399"/>
+<text x="633.1" y="478.9" fill="#cbd5f5" font-size="10" font-family="Consolas, ui-monospace, monospace" text-anchor="end" opacity="0.85">微博</text>
+<polygon points="514.67,424.27 507.74,428.27 500.81,424.27 500.81,416.27 507.74,412.27 514.67,416.27" fill="#0a1226" stroke="#34d399" stroke-width="1.2" filter="url(#glow)"/>
+<circle cx="507.7373397827713" cy="420.26629449875463" r="2" fill="#34d399"/>
+<text x="498.9" y="436.6" fill="#cbd5f5" font-size="10" font-family="Consolas, ui-monospace, monospace" text-anchor="end" opacity="0.85">公众号</text>
+<polygon points="437.29,340.85 430.37,344.85 423.44,340.85 423.44,332.85 430.37,328.85 437.29,332.85" fill="#0a1226" stroke="#34d399" stroke-width="1.2" filter="url(#glow)"/>
+<circle cx="430.36576277006225" cy="336.8481346920959" r="2" fill="#34d399"/>
+<text x="416.4" y="347.6" fill="#cbd5f5" font-size="10" font-family="Consolas, ui-monospace, monospace" text-anchor="end" opacity="0.85">Threads</text>
+<polygon points="407.28,210.95 400.35,214.95 393.43,210.95 393.43,202.95 400.35,198.95 407.28,202.95" fill="#0a1226" stroke="#34d399" stroke-width="1.2" filter="url(#glow)"/>
+<circle cx="400.35496836167823" cy="206.95167401281856" r="2" fill="#34d399"/>
+<text x="384.4" y="209.1" fill="#cbd5f5" font-size="10" font-family="Consolas, ui-monospace, monospace" text-anchor="end" opacity="0.85">X</text>
+<polygon points="442.31,98.58 435.38,102.58 428.45,98.58 428.45,90.58 435.38,86.58 442.31,90.58" fill="#0a1226" stroke="#34d399" stroke-width="1.2" filter="url(#glow)"/>
+<circle cx="435.3769467826529" cy="94.58307095128373" r="2" fill="#34d399"/>
+<text x="421.7" y="89.2" fill="#cbd5f5" font-size="10" font-family="Consolas, ui-monospace, monospace" text-anchor="end" opacity="0.85">TikTok</text>
+<polygon points="531.85,13.39 524.93,17.39 518.00,13.39 518.00,5.39 524.93,1.39 531.85,5.39" fill="#0a1226" stroke="#34d399" stroke-width="1.2" filter="url(#glow)"/>
+<circle cx="524.9256215183473" cy="9.386877386376199" r="2" fill="#34d399"/>
+<text x="517.3" y="-1.7" fill="#cbd5f5" font-size="10" font-family="Consolas, ui-monospace, monospace" text-anchor="end" opacity="0.85">Pinterest</text>
+<circle cx="640.0" cy="220.0" r="80" fill="url(#queen)" filter="url(#bigGlow)" opacity="0.9"/>
+<ellipse cx="613.00" cy="220.00" rx="15.68" ry="9.84" fill="#FF2442" stroke="#ff5577" stroke-width="0.8" filter="url(#glow)"/>
+<ellipse cx="631.00" cy="220.00" rx="16.20" ry="10.10" fill="#FF2442" stroke="#ff5577" stroke-width="0.8" filter="url(#glow)"/>
+<ellipse cx="649.00" cy="220.00" rx="15.92" ry="9.96" fill="#FF2442" stroke="#ff5577" stroke-width="0.8" filter="url(#glow)"/>
+<ellipse cx="667.00" cy="220.00" rx="15.44" ry="9.72" fill="#FF2442" stroke="#ff5577" stroke-width="0.8" filter="url(#glow)"/>
+<ellipse cx="604.00" cy="216.00" rx="11" ry="10" fill="#ff5577" stroke="#ffd6dd" stroke-width="0.8" filter="url(#glow)"/>
+<polygon points="672.0,212.0 686.0,220.0 672.0,228.0" fill="#FF2442" stroke="#ff5577" stroke-width="0.8"/>
+<path d="M596.0 208.0 q -14 -10 -28 -22" fill="none" stroke="#ff5577" stroke-width="1.2" stroke-linecap="round"/>
+<path d="M596.0 220.0 q -14 6 -28 14" fill="none" stroke="#ff5577" stroke-width="1.2" stroke-linecap="round"/>
+<circle cx="568.0" cy="186.0" r="1.6" fill="#ffd6dd"/>
+<circle cx="568.0" cy="234.0" r="1.6" fill="#ffd6dd"/>
+<path d="M622.0 210.0 q -10 8 -18 14" fill="none" stroke="#ff5577" stroke-width="1.1" stroke-linecap="round"/>
+<path d="M626.0 220.0 q 10 8 18 14" fill="none" stroke="#ff5577" stroke-width="1.1" stroke-linecap="round"/>
+<path d="M630.0 230.0 q -10 8 -18 14" fill="none" stroke="#ff5577" stroke-width="1.1" stroke-linecap="round"/>
+<circle cx="640.0" cy="220.0" r="6" fill="url(#queenCore)" filter="url(#bigGlow)"/>
+<circle cx="640.0" cy="220.0" r="2.4" fill="#ffffff"/>
+<text x="640.0" y="280.0" fill="#ffd6dd" font-size="11" font-family="Consolas, ui-monospace, monospace" text-anchor="middle" letter-spacing="3">Q U E E N · xhs - Loop</text>
+<text x="640.0" y="298.0" fill="#ff6b81" font-size="9" font-family="Consolas, ui-monospace, monospace" text-anchor="middle" letter-spacing="2" opacity="0.8">core orchestrator · 调度 · 风控 · 派单</text>
+<text x="1256" y="34" fill="#475569" font-size="10" font-family="Consolas, ui-monospace, monospace" text-anchor="end">xiaohongshu-Loop · v0.1.0 · build cyber-ant-nest</text>
+<text x="1256" y="50" fill="#475569" font-size="10" font-family="Consolas, ui-monospace, monospace" text-anchor="end">12 channels · 1 scheduler · 1 queen</text>
+<rect x="24" y="389" width="14" height="3" rx="1.5" fill="#22d3ee"/>
+<text x="44" y="392" fill="#cbd5f5" font-size="10" font-family="Consolas, ui-monospace, monospace">中台核心 · core</text>
+<rect x="194" y="389" width="14" height="3" rx="1.5" fill="#a78bfa"/>
+<text x="214" y="392" fill="#cbd5f5" font-size="10" font-family="Consolas, ui-monospace, monospace">基础设施 · infra</text>
+<rect x="364" y="389" width="14" height="3" rx="1.5" fill="#34d399"/>
+<text x="384" y="392" fill="#cbd5f5" font-size="10" font-family="Consolas, ui-monospace, monospace">外部渠道 · channels</text>
+<rect x="534" y="389" width="14" height="3" rx="1.5" fill="#FF2442"/>
+<text x="554" y="392" fill="#cbd5f5" font-size="10" font-family="Consolas, ui-monospace, monospace">调度 · 派单 · 风控</text>
+<text x="1256" y="392" fill="#475569" font-size="10" font-family="Consolas, ui-monospace, monospace" text-anchor="end">system is the nest · content is the food · channels are the foragers</text>
+</svg>
