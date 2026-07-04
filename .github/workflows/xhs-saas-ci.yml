@@ -17,74 +17,91 @@ jobs:
     name: xhs-saas backend (ruff + pytest)
     runs-on: ubuntu-latest
     timeout-minutes: 10
-    defaults:
-      run:
-        working-directory: xiaohongshu-saas
     steps:
       - uses: actions/checkout@v4
+        with:
+          path: src
       - uses: actions/setup-python@v5
         with:
           python-version: '3.11'
           cache: pip
-          cache-dependency-path: xiaohongshu-saas/pyproject.toml
-      - run: |
+          cache-dependency-path: src/xiaohongshu-saas/pyproject.toml
+      - name: Install backend deps
+        working-directory: src/xiaohongshu-saas
+        run: |
           python -m pip install --upgrade pip
           pip install -e ".[dev]"
-      - run: ruff check .
-      - run: pytest -q tests
+      - name: Ruff
+        working-directory: src/xiaohongshu-saas
+        run: ruff check .
+      - name: Pytest
+        working-directory: src/xiaohongshu-saas
+        run: pytest -q tests
 
   xhs-saas-console:
     name: xhs-saas console (tsc + vitest + vite build)
     runs-on: ubuntu-latest
     timeout-minutes: 10
-    defaults:
-      run:
-        working-directory: xiaohongshu-saas/web/console
     steps:
       - uses: actions/checkout@v4
+        with:
+          path: src
       - uses: actions/setup-node@v4
         with:
           node-version: '20'
           cache: npm
-          cache-dependency-path: xiaohongshu-saas/web/console/package-lock.json
-      - run: npm ci
-      - run: npm test -- --run
-      - run: npm run build
+          cache-dependency-path: src/xiaohongshu-saas/web/console/package-lock.json
+      - name: npm ci
+        working-directory: src/xiaohongshu-saas/web/console
+        run: npm ci
+      - name: vitest
+        working-directory: src/xiaohongshu-saas/web/console
+        run: npm test -- --run
+      - name: vite build
+        working-directory: src/xiaohongshu-saas/web/console
+        run: npm run build
 
   pbp-api:
     name: donor-screener-pbp (pytest)
     runs-on: ubuntu-latest
     timeout-minutes: 10
-    defaults:
-      run:
-        working-directory: donor-screener-pbp
     steps:
       - uses: actions/checkout@v4
+        with:
+          path: src
       - uses: actions/setup-python@v5
         with:
           python-version: '3.11'
           cache: pip
-          cache-dependency-path: donor-screener-pbp/requirements.txt
-      - run: |
+          cache-dependency-path: src/donor-screener-pbp/requirements.txt
+      - name: Install pbp deps
+        working-directory: src/donor-screener-pbp
+        run: |
           python -m pip install --upgrade pip
-          pip install -r requirements.txt
-      - run: pytest -q tests
+          pip install -r "$(pwd)/requirements-ci.txt"
+          pip install -e .
+      - name: Pytest pbp
+        working-directory: src/donor-screener-pbp
+        run: pytest -q tests
 
   lakehouse-api:
     name: data-lakehouse (pytest)
     runs-on: ubuntu-latest
     timeout-minutes: 10
-    defaults:
-      run:
-        working-directory: data-lakehouse
     steps:
       - uses: actions/checkout@v4
+        with:
+          path: src
       - uses: actions/setup-python@v5
         with:
           python-version: '3.11'
           cache: pip
-          cache-dependency-path: data-lakehouse/pyproject.toml
-      - run: |
+          cache-dependency-path: src/data-lakehouse/pyproject.toml
+      - name: Install lakehouse deps
+        working-directory: src/data-lakehouse
+        run: |
           python -m pip install --upgrade pip
           pip install -e ".[dev]"
-      - run: pytest -q tests
+      - name: Pytest lakehouse
+        working-directory: src/data-lakehouse
+        run: pytest -q tests
