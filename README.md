@@ -41,12 +41,6 @@
   <img src="docs/cyber-ant-nest.svg" alt="xiaohongshu-Loop architecture" width="100%"/>
 </p>
 
-<p align="center">
-  <img src="docs/assets/ces-2027-vision.jpg" alt="expo hall · on-site reference photo" width="100%"/>
-  <br/>
-  <sub><em>展会现场 · 我们想去的地方</em></sub>
-</p>
-
 ---
 
 > [!IMPORTANT]
