@@ -78,8 +78,8 @@ jobs:
         working-directory: src/donor-screener-pbp
         run: |
           python -m pip install --upgrade pip
-          ls -la
-          pip install -r "$(pwd)/requirements.txt"
+          pip install -r "$(pwd)/requirements-ci.txt"
+          pip install -e .
       - name: Pytest pbp
         working-directory: src/donor-screener-pbp
         run: pytest -q tests
