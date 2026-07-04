@@ -33,6 +33,46 @@
 
 ---
 
+<!-- ============================================================ -->
+<!-- xiaohongshu-Loop · 项目愿景 / Vision                  -->
+<!-- ============================================================ -->
+
+## 愿景 · Vision
+
+<p align="center">
+  <img src="docs/cyber-ant-nest.svg" alt="cyber fire-ant nest" width="100%"/>
+  <br/>
+  <sub><em>系统是蚁巢 · 内容是养料 · 渠道是觅食的工蚁 · 调度与风控是守卫与节律。</em></sub>
+</p>
+
+<p align="center">
+  <em>
+    我们的起点是一只沉睡的蚁后；我们想让它长成一个城市，<br/>
+    让每一篇笔记、每一条视频，都沿着信息素跑得既稳又快。
+  </em>
+</p>
+
+> **李梦的诗 · A poem by Li Meng**
+>
+> 从一根网线开始，
+> 织成神经的密林；
+> 每一只工蚁衔着光，
+> 把人类的低语翻译成亿次心跳。
+> 
+> ——有一天，我们会站在拉斯维加斯的展厅里，
+> 让全世界看见：在中国写代码的人，也能造出会生长的机器。
+
+<p align="center">
+  <img src="docs/assets/ces-2027-vision.jpg" alt="CES 2027 · Las Vegas Convention Center West Hall" width="100%"/>
+  <br/>
+  <sub><em>CES 2027 · Las Vegas Convention Center · West Hall · Live Show — 我们想去的地方。</em></sub>
+</p>
+
+> [!NOTE]
+> Dream -> Build -> Demo -> Ship. 从一只赛博蚂蚁, 到一整套可生长的中台, 再到 CES 展会舞台上的实物—— 我们用 18 个月把一个 PHP 脚本, 养成一个会自己巡逻的巢穴。<br/>欢迎一切相信代码也是一种生物的同行者, 一起把巢穴修得更大。
+
+---
+
 > [!IMPORTANT]
 > **首发渠道：小红书** · 架构预留抖音 / 快手 / 视频号 / B 站 / 知乎扩展位 · **中台骨架优先**，业务侧只关心"什么账号发什么内容什么时间发"。
 
