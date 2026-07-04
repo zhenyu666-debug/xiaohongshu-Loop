@@ -77,3 +77,9 @@ dependency-check-suppressions.xml
 debug-buttons.js
 create_catalog.sql
 create_dwd_table.sql
+# PyInstaller / launcher build artifacts
+dist/
+build/
+logs/
+*.spec
+

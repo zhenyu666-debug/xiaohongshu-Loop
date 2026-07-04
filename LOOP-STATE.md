@@ -69,7 +69,30 @@ Trino wrapper with deterministic seed fallback. KPIs/funnel/series/top-items end
 - Write tool occasionally writes UTF-16; always batch-fix UTF-16 before running tests.
 - 110 files in data-lakehouse remain untracked (only the lakehouse-api subset was added in M4a commit).
 
+## M7 — Desktop launcher (.exe GUI) — user ask: "给我个能打开的控制台 或者exe什么的"
+
+User asked for a real GUI app / exe instead of another docker compose dance.
+We shipped `scripts/console_gui.py` (pywebview + WebView2) and a `pyinstaller`
+build script (`scripts/build_launcher.py`) that produces a double-clickable
+`dist/xhs-saas-console/xhs-saas-console.exe`.
+
+| Feature | How |
+|---|---|
+| Real GUI window | pywebview (uses Win10/11 WebView2, ~0 extra install) |
+| Tray fallback | pystray + Pillow (tray menu mirrors Start/Stop/Open/Quit) |
+| Embedded UI | HTML/CSS/JS served on http://127.0.0.1:8766/ (dark slate, status pills, rolling log) |
+| Subprocess mgr | stdlib `subprocess` + CREATE_NO_WINDOW |
+| Status API | http://127.0.0.1:8765/status JSON for scripting |
+| Build | `python scripts/build_launcher.py` -> PyInstaller onedir (~15 MB exe + ~85 MB internal) |
+
+Files: `scripts/console_gui.py` (~26 KB), `scripts/build_launcher.py` (~4 KB),
+`scripts/requirements-launcher.txt`.  One commit added all three.
+
+Also kept the lite tray-only variant `scripts/tray_launcher.py` (pystray only,
+no GUI window) for headless servers.  And the Tkinter variant `console_launcher.py`
+will fail at runtime on this machine because Tkinter isn't installed - documented.
+
 ## File locations for next session
 - Plan file: `unified_console_tier-1_22e55942.plan.md`
 - Workspace: `c:\Users\Hasee\.qclaw\workspace\get_jobs`
-- Push target: `https://github.com/zhenyu666-debug/xiaohongshu-Loop.git` (NOT YET PUSHED — all commits local on main)
+- Push target: `https://github.com/zhenyu666-debug/xiaohongshu-Loop.git`

@@ -406,6 +406,40 @@ python scripts/e2e_smoke.py
   </sub>
 </p>
 
+
+### Desktop Launcher (Windows .exe GUI)
+
+The whole stack now ships as a **double-clickable Windows executable** that
+launches a real GUI window (pywebview + WebView2, no Python install needed on
+the target machine).  Stop the docker compose flow and just run this instead.
+
+| Build output | Path |
+|---|---|
+| `dist/xhs-saas-console/xhs-saas-console.exe` | main launcher (~15 MB) |
+| `dist/xhs-saas-console/_internal/` | bundled runtime + Uvicorn + deps (~85 MB) |
+
+How to build it locally:
+
+```bash
+pip install pywebview pystray Pillow pyinstaller
+python scripts/build_launcher.py
+```
+
+Then double-click `dist\xhs-saas-console\xhs-saas-console.exe` and a window
+pops up: live status for the three services, big buttons (Start / Stop /
+Open console / Quit) and a rolling log tail.  When all three are healthy the
+console opens itself in your default browser at `http://127.0.0.1:8080/console/`.
+
+Same launcher but from source (no build step):
+
+```bash
+pip install -r scripts/requirements-launcher.txt
+python scripts/console_gui.py
+```
+
+Status / introspection port: `http://127.0.0.1:8765/status` (JSON snapshot,
+useful for scripts and remote monitoring).
+
 <!-- Star History: 替换 owner/repo 后自动生成 -->
 <p align="center">
   <img src="https://img.shields.io/github/stars/zhenyu666-debug/xiaohongshu-Loop?style=social" alt="Star this repo"/>
