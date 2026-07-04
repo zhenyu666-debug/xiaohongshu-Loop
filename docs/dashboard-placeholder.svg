@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 480 270" width="480" height="270" role="img" aria-label="dashboard screenshot placeholder">
+  <rect width="100%" height="100%" fill="#FF6B81"/>
+  <g font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" fill="#ffffff" text-anchor="middle">
+    <text x="240" y="120" font-size="22" font-weight="700">DASHBOARD</text>
+    <text x="240" y="150" font-size="12" opacity="0.9">Replace with docs/dashboard.png</text>
+  </g>
+</svg>
