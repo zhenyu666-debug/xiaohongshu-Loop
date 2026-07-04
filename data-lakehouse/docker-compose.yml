@@ -1,0 +1,190 @@
+services:
+  # ── Kafka ──────────────────────────────────────────────────────────────────
+  zookeeper:
+    image: confluentinc/cp-zookeeper:7.6.1
+    container_name: zookeeper
+    environment:
+      ZOOKEEPER_CLIENT_PORT: 2181
+      ZOOKEEPER_TICK_TIME: 2000
+    ports:
+      - "2181:2181"
+    networks:
+      - lakehouse
+  kafka:
+    image: confluentinc/cp-kafka:7.6.1
+    container_name: kafka
+    depends_on:
+      - zookeeper
+    ports:
+      - "9092:9092"
+      - "29092:29092"
+    environment:
+      KAFKA_BROKER_ID: 1
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:29092,PLAINTEXT_HOST://localhost:9092
+      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
+      KAFKA_LOG_RETENTION_HOURS: 168
+      KAFKA_LOG_SEGMENT_BYTES: 1073741824
+    networks:
+      - lakehouse
+  kafka-ui:
+    image: provectuslabs/kafka-ui:latest
+    container_name: kafka-ui
+    depends_on:
+      - kafka
+    ports:
+      - "8083:8080"
+    environment:
+      KAFKA_CLUSTERS_0_NAME: local
+      KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: kafka:29092
+      KAFKA_CLUSTERS_0_ZOOKEEPER: zookeeper:2181
+    networks:
+      - lakehouse
+  # ── MinIO (S3-compatible storage) ──────────────────────────────────────────
+  minio:
+    image: minio/minio:latest
+    container_name: minio
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    environment:
+      MINIO_ROOT_USER: admin
+      MINIO_ROOT_PASSWORD: password
+      MINIO_DEFAULT_BUCKETS: warehouse
+    command: server /data --console-address ":9001"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - lakehouse
+  # ── PostgreSQL (Iceberg REST Catalog backend) ────────────────────────────────
+  postgres:
+    image: postgres:15-alpine
+    container_name: postgres
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_DB: iceberg_catalog
+      POSTGRES_USER: admin
+      POSTGRES_PASSWORD: password
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U admin -d iceberg_catalog"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    networks:
+      - lakehouse
+  # ── Iceberg REST Catalog ────────────────────────────────────────────────────
+  iceberg-rest:
+    build:
+      context: ./iceberg-rest
+    container_name: iceberg-rest
+    ports:
+      - "8181:8181"
+    depends_on:
+      - minio
+    environment:
+      CATALOG_CATALOG__IMPL: org.apache.iceberg.jdbc.JdbcCatalog
+      CATALOG_URI: jdbc:postgresql://postgres:5432/iceberg_catalog
+      CATALOG_JDBC_USER: admin
+      CATALOG_JDBC_PASSWORD: password
+      CATALOG_WAREHOUSE: s3://warehouse/
+      CATALOG_IO__IMPL: org.apache.iceberg.aws.s3.S3FileIO
+      CATALOG_S3_ENDPOINT: http://minio:9000
+      CATALOG_S3_ACCESS__KEY__ID: admin
+      CATALOG_S3_SECRET__ACCESS__KEY: password
+      CATALOG_S3_PATH__STYLE__ACCESS: "true"
+      AWS_ACCESS_KEY_ID: admin
+      AWS_SECRET_ACCESS_KEY: password
+      AWS_REGION: us-east-1
+    networks:
+      - lakehouse
+  # ── Apache Flink ────────────────────────────────────────────────────────────
+  flink-jobmanager:
+    image: flink:1.18.1
+    container_name: flink-jobmanager
+    ports:
+      - "8081:8081"
+    command: jobmanager
+    environment:
+      FLINK_ENV_JAVA_OPTS: "-Dhttps.proxyHost= -Dhttps.proxyPort= -Dhttp.proxyHost= -Dhttp.proxyPort= -Dhttp.nonProxyHosts="
+      JOB_MANAGER_RPC_ADDRESS: flink-jobmanager
+      JOB_MANAGER_MEMORY_MEMORY_SIZE: 2048m
+    volumes:
+      - ./flink/lib:/opt/flink/lib
+      - ./flink/conf:/opt/flink/conf
+      - flink_checkpoints:/opt/flink/checkpoints
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:8081/overview || exit 1"]
+      interval: 15s
+      timeout: 10s
+      retries: 10
+      start_period: 30s
+    networks:
+      - lakehouse
+  flink-taskmanager:
+    image: flink:1.18.1
+    container_name: flink-taskmanager
+    depends_on:
+      flink-jobmanager:
+        condition: service_healthy
+    command: taskmanager
+    environment:
+      FLINK_ENV_JAVA_OPTS: "-Dhttps.proxyHost= -Dhttps.proxyPort= -Dhttp.proxyHost= -Dhttp.proxyPort= -Dhttp.nonProxyHosts="
+      JOB_MANAGER_RPC_ADDRESS: flink-jobmanager
+      TASK_MANAGER_MEMORY_MEMORY_SIZE: 4096m
+      TASK_MANAGER_NUMBER_OF_TASK_SLOTS: 8
+    volumes:
+      - ./flink/lib:/opt/flink/lib
+      - ./flink/conf:/opt/flink/conf
+      - flink_checkpoints:/opt/flink/checkpoints
+    networks:
+      - lakehouse
+  # ── Trino ───────────────────────────────────────────────────────────────────
+  trino:
+    image: trinodb/trino:459
+    container_name: trino
+    user: root
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./trino/etc:/etc/trino:ro
+      - trino_data:/data
+    depends_on:
+      - iceberg-rest
+    networks:
+      - lakehouse
+  # ── p38 SSE Candidate BI: long-running emitter ──────────────
+  # Runs `p38_cand_emit.py --realtime` inside the lakehouse network so
+  # it can push to kafka:29092. No host port exposed (producer only).
+  p38-emit:
+    image: python:3.11-slim
+    container_name: p38-emit
+    working_dir: /work
+    command: >
+      bash -c "pip install --quiet kafka-python numpy pyyaml && python src/p38_cand_emit.py --realtime --interval 30"
+    environment:
+      KAFKA_BOOTSTRAP: "kafka:29092"
+      P38_TOPIC: "sse.candidate.score"
+    volumes:
+      - ../donor-screener-pbp:/work
+    depends_on:
+      kafka:
+        condition: service_started
+    restart: unless-stopped
+    networks:
+      - lakehouse
+networks:
+  lakehouse:
+    driver: bridge
+volumes:
+  postgres_data:
+  flink_checkpoints:
+  trino_data:

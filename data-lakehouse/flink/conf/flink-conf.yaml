@@ -1,0 +1,11 @@
+# Flink Configuration
+jobmanager.rpc.address: flink-jobmanager
+jobmanager.rpc.port: 6123
+jobmanager.memory.process.size: 1600m
+taskmanager.memory.process.size: 1728m
+taskmanager.numberOfTaskSlots: 8
+parallelism.default: 2
+state.backend: hashmap
+execution.planner: blink
+blob.server.port: 6124
+query.server.port: 6125

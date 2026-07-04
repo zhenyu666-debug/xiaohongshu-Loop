@@ -1,0 +1,4 @@
+C:\Users\Hasee\.qclaw\workspace\get_jobs\data-lakehouse\replay\kafka_replay_producer.py:41: DeprecationWarning: key_serializer does not implement kafka.serializer.Serializer
+  self.producer = self._create_producer()
+C:\Users\Hasee\.qclaw\workspace\get_jobs\data-lakehouse\replay\kafka_replay_producer.py:41: DeprecationWarning: value_serializer does not implement kafka.serializer.Serializer
+  self.producer = self._create_producer()

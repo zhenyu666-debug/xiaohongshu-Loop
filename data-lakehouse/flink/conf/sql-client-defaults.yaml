@@ -1,0 +1,22 @@
+tables:
+  - name: k_user_behavior_raw
+    type: source
+    connector: kafka
+    topic: user-behavior
+    properties:
+      bootstrap.servers: kafka:29092
+      group.id: flink-consumer-pvuv
+    format: json
+    schema:
+      - name: user_id
+        type: BIGINT
+      - name: item_id
+        type: BIGINT
+      - name: category_id
+        type: BIGINT
+      - name: behavior_type
+        type: STRING
+      - name: ts
+        type: BIGINT
+      - name: event_time
+        type: TIMESTAMP(3)

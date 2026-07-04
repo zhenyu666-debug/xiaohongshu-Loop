@@ -5,6 +5,9 @@
 data/
 *.db
 
+# Charts (regenerable PNG artifacts)
+charts/*.png
+
 # Flink jars
 flink/lib/
 iceberg-rest/lib/
@@ -22,3 +25,32 @@ __pycache__/
 .pytest_cache/
 .ruff_cache/
 .env
+
+# Scratch / debug files (leading underscore convention)
+_*.py
+_*.txt
+_*.json
+_*.sql
+_*.md
+
+# Other tmp
+*.log
+*.bak
+*.tmp
+
+# Don't duplicate the root LOOP-STATE.md
+/LOOP-STATE.md
+
+# One-off scratch by name pattern
+check_cols.py
+data_counts.py
+dl.cs
+dl2.py
+flink-versions.html
+test_date.py
+test_remote.py
+test_ts.py
+write_sql.py
+verify.ps1
+verify2.ps1
+verify3.py
