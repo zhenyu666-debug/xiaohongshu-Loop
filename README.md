@@ -42,9 +42,9 @@
 </p>
 
 <p align="center">
-  <img src="docs/assets/ces-2027-vision.jpg" alt="CES 2027 · Las Vegas Convention Center West Hall" width="100%"/>
+  <img src="docs/assets/ces-2027-vision.jpg" alt="expo hall · on-site reference photo" width="100%"/>
   <br/>
-  <sub><em>CES 2027 · Las Vegas Convention Center · West Hall</em></sub>
+  <sub><em>展会现场 · 我们想去的地方</em></sub>
 </p>
 
 ---
