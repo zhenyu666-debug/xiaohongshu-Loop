@@ -55,6 +55,13 @@ include = ["app*"]
 line-length = 110
 target-version = "py310"
 
+[tool.ruff.lint]
+# F401 (unused imports) is tolerated project-wide: many re-export helpers and
+# test fixtures import names for side effects (e.g. registering pytest fixtures,
+# module-level mocks). Enforce it locally via `ruff check --select F401` instead
+# of failing CI on existing legacy code.
+ignore = ["F401"]
+
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 testpaths = ["tests"]
