@@ -12,11 +12,6 @@ on:
       - 'xiaohongshu-saas/**'
       - '.github/workflows/xhs-saas-ci.yml'
 
-# The runner checks out this repo under $GITHUB_WORKSPACE/xiaohongshu-Loop/ (note
-# the double "xiaohongshu-Loop/xiaohongshu-Loop"). All paths below use that
-# nested form so explicit cwd stays in $GITHUB_WORKSPACE and pytest/vite
-# commands don't run from the wrong root.
-
 jobs:
   xhs-saas-backend:
     name: xhs-saas backend (ruff + pytest)
@@ -24,19 +19,24 @@ jobs:
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
+        with:
+          path: src
       - uses: actions/setup-python@v5
         with:
           python-version: '3.11'
           cache: pip
-          cache-dependency-path: xiaohongshu-Loop/xiaohongshu-saas/pyproject.toml
+          cache-dependency-path: src/xiaohongshu-saas/pyproject.toml
       - name: Install backend deps
+        working-directory: src/xiaohongshu-saas
         run: |
           python -m pip install --upgrade pip
-          pip install -e "xiaohongshu-Loop/xiaohongshu-saas[dev]"
+          pip install -e ".[dev]"
       - name: Ruff
-        run: ruff check xiaohongshu-Loop/xiaohongshu-saas
+        working-directory: src/xiaohongshu-saas
+        run: ruff check .
       - name: Pytest
-        run: pytest -q xiaohongshu-Loop/xiaohongshu-saas/tests
+        working-directory: src/xiaohongshu-saas
+        run: pytest -q tests
 
   xhs-saas-console:
     name: xhs-saas console (tsc + vitest + vite build)
@@ -44,17 +44,22 @@ jobs:
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
+        with:
+          path: src
       - uses: actions/setup-node@v4
         with:
           node-version: '20'
           cache: npm
-          cache-dependency-path: xiaohongshu-Loop/xiaohongshu-saas/web/console/package-lock.json
+          cache-dependency-path: src/xiaohongshu-saas/web/console/package-lock.json
       - name: npm ci
-        run: npm ci --prefix xiaohongshu-Loop/xiaohongshu-saas/web/console
+        working-directory: src/xiaohongshu-saas/web/console
+        run: npm ci
       - name: vitest
-        run: npm test --prefix xiaohongshu-Loop/xiaohongshu-saas/web/console -- --run
+        working-directory: src/xiaohongshu-saas/web/console
+        run: npm test -- --run
       - name: vite build
-        run: npm run build --prefix xiaohongshu-Loop/xiaohongshu-saas/web/console
+        working-directory: src/xiaohongshu-saas/web/console
+        run: npm run build
 
   pbp-api:
     name: donor-screener-pbp (pytest)
@@ -62,17 +67,21 @@ jobs:
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
+        with:
+          path: src
       - uses: actions/setup-python@v5
         with:
           python-version: '3.11'
           cache: pip
-          cache-dependency-path: xiaohongshu-Loop/donor-screener-pbp/requirements.txt
+          cache-dependency-path: src/donor-screener-pbp/requirements.txt
       - name: Install pbp deps
+        working-directory: src/donor-screener-pbp
         run: |
           python -m pip install --upgrade pip
-          pip install -r xiaohongshu-Loop/donor-screener-pbp/requirements.txt
+          pip install -r requirements.txt
       - name: Pytest pbp
-        run: pytest -q xiaohongshu-Loop/donor-screener-pbp/tests
+        working-directory: src/donor-screener-pbp
+        run: pytest -q tests
 
   lakehouse-api:
     name: data-lakehouse (pytest)
@@ -80,14 +89,18 @@ jobs:
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
+        with:
+          path: src
       - uses: actions/setup-python@v5
         with:
           python-version: '3.11'
           cache: pip
-          cache-dependency-path: xiaohongshu-Loop/data-lakehouse/pyproject.toml
+          cache-dependency-path: src/data-lakehouse/pyproject.toml
       - name: Install lakehouse deps
+        working-directory: src/data-lakehouse
         run: |
           python -m pip install --upgrade pip
-          pip install -e "xiaohongshu-Loop/data-lakehouse[dev]"
+          pip install -e ".[dev]"
       - name: Pytest lakehouse
-        run: pytest -q xiaohongshu-Loop/data-lakehouse/tests
+        working-directory: src/data-lakehouse
+        run: pytest -q tests
