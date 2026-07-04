@@ -103,17 +103,17 @@ flowchart TB
 ## Demo
 
 > [!TIP]
-> **真实截图 / GIF 替换占位**：把下面的占位图替换为 `docs/demo-loop.gif` / `docs/console.png`，GitHub 会自动渲染。
+> **真实截图 / GIF 替换占位**：把下面的占位图替换为 `docs/demo-loop.gif` / `docs/console.png` / `docs/dashboard.png`，GitHub 会自动渲染。
 
 <!-- 替换占位：推荐尺寸 1280x720，文件 < 10 MB -->
 <p align="center">
-  <img src="https://via.placeholder.com/960x540/FF2442/ffffff?text=Loop+Demo+GIF+%E5%B7%B2%E5%B0%81%E5%AD%98%E5%88%B0+docs%2Fdemo-loop.gif" alt="Loop demo placeholder" width="960"/>
-  <br/><sub><em>↑ 把 `docs/demo-loop.gif` 拖到仓库根，替换此占位图</em></sub>
+  <img src="docs/demo-placeholder.svg" alt="Loop demo placeholder" width="960"/>
+  <br/><sub><em>↑ 把 <code>docs/demo-loop.gif</code> 拖到仓库根，替换此占位图</em></sub>
 </p>
 
 <p align="center">
-  <img src="https://via.placeholder.com/480x270/1a1a1a/ffffff?text=Console" alt="Console placeholder" width="480"/>
-  <img src="https://via.placeholder.com/480x270/FF6B81/ffffff?text=Dashboard" alt="Dashboard placeholder" width="480"/>
+  <img src="docs/console-placeholder.svg" alt="Console placeholder" width="480"/>
+  <img src="docs/dashboard-placeholder.svg" alt="Dashboard placeholder" width="480"/>
 </p>
 
 ## 🤖 自动修复测试 (agent loop)

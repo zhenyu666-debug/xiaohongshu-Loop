@@ -1,85 +1,105 @@
-# ===== Python =====
+# ===== Build =====
+build/
+build/libs/*.jar
+build/classes/
+build/tmp/
+build/resources/
+build/distributions/
+build/resolvedMainClassName
+.gradle/
+out/
+target/
+*.class
+*.jar
+*.war
+
+# ===== Java / IDE =====
+*.iml
+.idea/
+.vscode/
+.project
+.classpath
+.settings/
+.factorypath
+*.iws
+*.ipr
+
+# ===== Runtime / Cookies / Personal Data =====
+.auth/
+cookies/
+**/cookies.json
+**/zhilian-cookies.json
+**/qcc_cookies.txt
+**/qcc_sessid.txt
+scraper_log*
+*.cookies
+*.cookie
+
+# ===== Database / Data files =====
+data/
+*.db
+*.sqlite
+*.sqlite3
+getjobs.db
+ralph-guardrails.json
+ralph-tasks.json
+
+# ===== Logs =====
+logs/
+*.log
+build.log
+compile*.log
+
+# ===== Python (qcc scraper & debug scripts) =====
 __pycache__/
-*.py[cod]
-*$py.class
-*.egg-info/
-.eggs/
-*.egg
+*.pyc
+*.pyo
 .pytest_cache/
-.mypy_cache/
 .ruff_cache/
-.coverage
-htmlcov/
-.tox/
+*.egg-info/
 .venv/
 venv/
-env/
 
-# ===== xiaohongshu-saas 专属 =====
-xiaohongshu-saas/.env
-xiaohongshu-saas/data/cookies/
-xiaohongshu-saas/data/images/*.tmp
-xiaohongshu-saas/logs/
-xiaohongshu-saas/web/console/node_modules/
-xiaohongshu-saas/web/console/dist/
-xiaohongshu-saas/.playwright/
+# ===== Unrelated projects =====
+donor-number-screener/
+data-lakehouse/
+qcc_scraper*
+check_*.py
+_check_*.py
+_debug_*.py
+_debug_*.html
+_diagnose*.py
+verify*.py
+download*.py
+launch_pw.py
+launcher.py
+run_pw.py
+test_subprocess.py
+test_412.py
+test_runner.py
+_html_snippet.txt
+_test_*.txt
+*.html.bak
+aiqicha_response.html
+debug-buttons.js
+dependency-check-suppressions.xml
+create_catalog.sql
+create_dwd_table.sql
 
-# ===== 编辑器 / 系统 =====
-.vscode/
-.idea/
+# ===== OS / Misc =====
 .DS_Store
 Thumbs.db
 *.swp
-*.swo
+*.bak
+*.tmp
 
-# ===== 日志 / 构建产物 =====
-*.log
-!xiaohongshu-saas/.gitkeep
+# ===== Sensitive binaries =====
+*.png
+*.pdf
+# SVG: tracked on purpose — architecture diagrams (docs/cyber-antest-nest.svg) + README placeholders.
+# Ignore only ad-hoc SVG noise.
+*.svg.tmp
+*.svg.bak
 
-# ===== 本地脚本（敏感/临时） =====
-_check_*.py
-_check_*.txt
-_html_snippet.txt
-_debug_*.html
-_debug_*.py
-_test_result.txt
-
-# ===== 工作区其他子项目（不属于本仓库，应忽略） =====
-.auth/
-.gradle/
-build/
-target/
-logs/
-/data/
-donor-number-screener/
-donor-java-screener/
-donor-screener-java/
-flyasiana_capture/
-front/
-li_s_additives/
-liepin/
-qcc/
-shared/
-uml-p-screener/
-vnpy/
-zhilian/
-
-# 这些顶层 .py / .sql / 临时日志不算仓库资产
-build.log
-compile*.log
-v2_run_*.log
-run.log
-scraper_log.txt
-qcc_cookies.txt
-qcc_sessid.txt
-security-report-screenshot.png
-dependency-check-suppressions.xml
-debug-buttons.js
-create_catalog.sql
-create_dwd_table.sql
-# PyInstaller / launcher build artifacts
-dist/
-build/
-logs/
-*.spec
-
+# 备注：frontend/ 目录要保留（智联 UI），不忽略
+backend/target/

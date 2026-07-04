@@ -42,7 +42,14 @@ htmlcov/
 playwright/.cache/
 
 # Frontend
-web/static/node_modules/
-web/static/dist/
+node_modules/
 web/console/dist/
-web/console/node_modules/
+web/console/dist.zip
+web/console/.release-notes.md
+web/console/.commit-msg.txt
+
+# Desktop launcher (pyinstaller)
+scripts/console_gui.spec
+scripts/xhs-saas-console.spec
+dist/xhs-saas-console/
+scripts/build_launcher.py.bak
