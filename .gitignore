@@ -101,6 +101,15 @@ Thumbs.db
 *.svg.tmp
 *.svg.bak
 
+# ===== WiX / MSI 构建产物 =====
+# build/ 是构建中间目录（heat 输出 + wixobj）
+installer/build/
+# wixpdb 是调试符号，不要上传
+installer/output/*.wixpdb
+# 单个 wixobj 文件散落在根目录时（早期 build_msi 跑出来的）
+Files.wixobj
+product.wixobj
+
 # 备注：frontend/ 目录要保留（智联 UI），不忽略
 backend/target/
 

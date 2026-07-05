@@ -1,0 +1,145 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  xhs-saas-console - WiX 3.14 MSI installer source
+
+  Per-user installation. No admin elevation required.
+  Runtime cache lives in %LOCALAPPDATA%\xhs-saas-console\runtime\
+  and is cleaned up on uninstall.
+
+  Build:
+    cd installer
+    .\build_msi.ps1 -Version 0.6.0
+
+  Author: zhenyu666-debug
+-->
+<Wix xmlns="http://schemas.microsoft.com/wix/2006/wi"
+     xmlns:util="http://schemas.microsoft.com/wix/UtilExtension">
+
+  <!-- Stable identifiers. Do NOT change once shipped. -->
+  <?define ProductCode = "CB49ED5C-30E2-4F98-99DC-63A15816DC5E" ?>
+  <?define UpgradeCode = "551C41B2-125F-43A5-BF52-3639B1EFA1D3" ?>
+  <?define Manufacturer = "zhenyu666-debug" ?>
+  <?define ProductName = "xiaohongshu-Loop Console" ?>
+  <?define ShortName    = "xhs-saas-console" ?>
+
+  <Product Id="$(var.ProductCode)"
+           Name="$(var.ProductName)"
+           Version="$(var.Version)"
+           Manufacturer="$(var.Manufacturer)"
+           UpgradeCode="$(var.UpgradeCode)"
+           Language="1033"
+           Codepage="1252">
+
+    <Package Id="*"
+             InstallerVersion="500"
+             Compressed="yes"
+             InstallScope="perUser"
+             Description="$(var.ProductName) v$(var.Version)"
+             Comments="Unified desktop console for xiaohongshu-Loop SaaS"
+             Manufacturer="$(var.Manufacturer)"
+             Languages="1033" />
+
+    <MajorUpgrade DowngradeErrorMessage="A newer version is already installed."
+                  AllowSameVersionUpgrades="no"
+                  Schedule="afterInstallInitialize" />
+
+    <Media Id="1" Cabinet="xhs-saas-console.cab" EmbedCab="yes" CompressionLevel="high" />
+
+    <Directory Id="TARGETDIR" Name="SourceDir">
+      <Directory Id="LocalAppDataFolder">
+        <Directory Id="INSTALLDIR" Name="xhs-saas-console">
+        </Directory>
+        <Directory Id="AppRuntime" Name="xhs-saas-console">
+        </Directory>
+      </Directory>
+      <Directory Id="ProgramMenuFolder">
+        <Directory Id="AppMenuFolder" Name="xiaohongshu-Loop Console" />
+      </Directory>
+      <Directory Id="DesktopFolder" />
+    </Directory>
+
+    <Feature Id="MainFeature"
+             Title="$(var.ProductName)"
+             Level="1"
+             ConfigurableDirectory="INSTALLDIR"
+             Description="Unified desktop console."
+             Display="expand">
+
+      <ComponentGroupRef Id="HarvestedFiles" />
+
+      <Component Id="StartMenuDocs" Directory="AppMenuFolder" Guid="7FBB1D9A-127A-4384-A7F8-DCE8D1715DB0">
+        <util:InternetShortcut Id="DocsShortcut"
+                               Name="User Guide.lnk"
+                               Target="https://github.com/zhenyu666-debug/xiaohongshu-Loop/blob/main/FAQ.md"
+                               Directory="AppMenuFolder" />
+        <RemoveFolder Id="RemoveAppMenuFolder" Directory="AppMenuFolder" On="uninstall" />
+        <RegistryValue Root="HKCU"
+                       Key="Software\Microsoft\Windows\CurrentVersion\Uninstall\$(var.ShortName)"
+                       Name="installed"
+                       Type="integer"
+                       Value="1"
+                       KeyPath="yes" />
+      </Component>
+
+      <Component Id="DesktopShortcut" Directory="DesktopFolder" Guid="12345678-90AB-CDEF-1234-567890ABCDEF">
+        <Shortcut Id="DesktopAppShortcut"
+                  Name="$(var.ShortName)"
+                  Target="[#MainExe]"
+                  WorkingDirectory="INSTALLDIR"
+                  Description="Open xiaohongshu-Loop Console" />
+        <RemoveFile Id="RemoveDesktopShortcut" On="uninstall" Name="$(var.ShortName).lnk" />
+        <RegistryValue Root="HKCU"
+                       Key="Software\$(var.Manufacturer)\$(var.ProductName)"
+                       Name="DesktopShortcutInstalled"
+                       Type="integer"
+                       Value="1"
+                       KeyPath="yes" />
+      </Component>
+
+      <Component Id="AppMenuLauncher" Directory="AppMenuFolder" Guid="ABCDEF12-3456-7890-ABCD-EF1234567890">
+        <Shortcut Id="StartMenuLauncher"
+                  Name="$(var.ProductName)"
+                  Target="[#MainExe]"
+                  WorkingDirectory="INSTALLDIR"
+                  Description="Launch xiaohongshu-Loop Console" />
+        <Shortcut Id="StartMenuUninstall"
+                  Name="Uninstall $(var.ProductName)"
+                  Target="[$(var.ShortName)]"
+                  Arguments="/uninstall"
+                  Description="Uninstall xiaohongshu-Loop Console" />
+        <RegistryValue Root="HKCU"
+                       Key="Software\$(var.Manufacturer)\$(var.ProductName)"
+                       Name="MenuLauncherInstalled"
+                       Type="integer"
+                       Value="1"
+                       KeyPath="yes" />
+      </Component>
+    </Feature>
+
+    <InstallExecuteSequence>
+      <Custom Action="CleanupRuntimeCache" After="RemoveFiles">NOT REMOVE=&quot;ALL&quot;</Custom>
+    </InstallExecuteSequence>
+    <CustomAction Id="CleanupRuntimeCache"
+                  Directory="AppRuntime"
+                  ExeCommand="cmd.exe /c if exist &quot;[AppRuntime]runtime&quot; rmdir /s /q &quot;[AppRuntime]runtime&quot;"
+                  Return="ignore" />
+
+    <UI>
+      <UIRef Id="WixUI_Minimal" />
+      <Property Id="WIXUI_EXITDIALOGOPTIONALTEXT"
+                Value="The xiaohongshu-Loop Console has been installed. A shortcut is on your desktop." />
+    </UI>
+
+    <Property Id="ARPHELPLINK"
+              Value="https://github.com/zhenyu666-debug/xiaohongshu-Loop/issues" />
+    <Property Id="ARPINSTALLLOCATION" Value="[INSTALLDIR]" />
+    <Property Id="ARPSIZE" Value="200000" />
+    <Property Id="ARPURLINFOABOUT" Value="https://github.com/zhenyu666-debug/xiaohongshu-Loop" />
+    <Property Id="ARPCONTACT" Value="zhenyu666-debug" />
+    <Property Id="ARPINSTALLPERUSER" Value="1" />
+
+    <Property Id="DisplayName" Value="$(var.ProductName)" />
+    <Property Id="DisplayVersion" Value="$(var.Version)" />
+    <Property Id="Publisher" Value="$(var.Manufacturer)" />
+  </Product>
+</Wix>

@@ -1,2 +1,5 @@
 *.exe filter=lfs diff=lfs merge=lfs -text
 *.zip filter=lfs diff=lfs merge=lfs -text
+installer/output/*.msi filter=lfs diff=lfs merge=lfs -text
+installer/output/*.exe filter=lfs diff=lfs merge=lfs -text
+installer/output/*.zip filter=lfs diff=lfs merge=lfs -text
