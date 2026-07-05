@@ -32,12 +32,12 @@ const SCORE_COLORS = ["#10b981", "#059669", "#34d399", "#6ee7b7", "#a7f3d0"];
 export default function CandidatesTop20() {
   const top20 = useQuery({
     queryKey: ["candidates", "top20"],
-    queryFn: async () => (await api.get<{ items: Top20Item[] }>("/v1/pbp/api/candidates/top20")).data,
+    queryFn: async () => (await api.get<{ items: Top20Item[] }>("/v1/pbp/candidates/top20")).data,
   });
 
   const dist = useQuery({
     queryKey: ["candidates", "distribution"],
-    queryFn: async () => (await api.get<DistResp>("/v1/pbp/api/candidates/distribution?buckets=12")).data,
+    queryFn: async () => (await api.get<DistResp>("/v1/pbp/candidates/distribution?buckets=12")).data,
   });
 
   return (

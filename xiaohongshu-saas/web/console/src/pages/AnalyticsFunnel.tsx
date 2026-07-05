@@ -24,7 +24,7 @@ const STAGE_COLORS = ["#22d3ee", "#10b981", "#f59e0b", "#ef4444"];
 export default function AnalyticsFunnel() {
   const { data, isLoading, isError } = useQuery({
     queryKey: ["analytics", "funnel"],
-    queryFn: async () => (await api.get<FunnelResp>("/v1/lakehouse/api/funnel")).data,
+    queryFn: async () => (await api.get<FunnelResp>("/v1/lakehouse/funnel")).data,
     refetchInterval: 60_000,
   });
 

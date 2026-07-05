@@ -34,12 +34,12 @@ export default function AlertsCenter() {
   const qc = useQueryClient();
   const events = useQuery({
     queryKey: ["alerts", "events"],
-    queryFn: async () => (await api.get<{ items: RecentItem[]; total: number }>("/api/v1/events/recent?limit=50")).data,
+    queryFn: async () => (await api.get<{ items: RecentItem[]; total: number }>("/v1/events/recent?limit=50")).data,
     refetchInterval: 30_000,
   });
   const rules = useQuery({
     queryKey: ["alerts", "rules"],
-    queryFn: async () => (await api.get<AlertsResp>("/api/v1/alerts/recent")).data,
+    queryFn: async () => (await api.get<AlertsResp>("/v1/alerts/recent")).data,
     refetchInterval: 60_000,
   });
 

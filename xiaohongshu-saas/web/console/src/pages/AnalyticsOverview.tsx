@@ -20,7 +20,7 @@ interface KpiResp {
 export default function AnalyticsOverview() {
   const { data, isLoading, isError } = useQuery({
     queryKey: ["analytics", "kpis"],
-    queryFn: async () => (await api.get<KpiResp>("/v1/lakehouse/api/kpis")).data,
+    queryFn: async () => (await api.get<KpiResp>("/v1/lakehouse/kpis")).data,
     refetchInterval: 60_000,
   });
 
