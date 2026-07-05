@@ -55,6 +55,16 @@ class Settings(BaseSettings):
     admin_username: str = "admin"
     admin_password: str = "admin"
 
+    # ---- Multi-tenant bootstrap ----
+    default_tenant_id: str = "default"
+    default_tenant_name: str = "Default Workspace"
+
+    # ---- Auth ----
+    jwt_secret: str = ""  # falls back to app_secret if empty
+    jwt_ttl_minutes: int = 60 * 24
+    bootstrap_admin_email: str = ""  # if set, seed an admin User at startup
+    bootstrap_admin_password: str = ""
+
     # ---- Misc ----
     cors_origins: List[str] = Field(default_factory=lambda: ["*"])
 

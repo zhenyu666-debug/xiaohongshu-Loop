@@ -38,8 +38,53 @@ async def session_scope() -> AsyncIterator[AsyncSession]:
 
 async def init_db() -> None:
     """Create tables (dev-only convenience). Use Alembic in prod."""
-    from app.models import Base  # noqa: WPS433
+    from app.models import Base, Tenant, BillingAccount, User, Membership  # noqa: WPS433
 
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
     logger.info("Database initialized at {}", settings.database_url)
+
+    await _seed_default_tenant()
+
+
+async def _seed_default_tenant() -> None:
+    """Ensure a `default` tenant exists so single-tenant deployments keep working."""
+    from sqlalchemy import select  # noqa: WPS433
+
+    async with session_scope() as session:
+        tid = settings.default_tenant_id
+        tenant = await session.get(Tenant, tid)
+        if tenant is None:
+            tenant = Tenant(
+                id=tid,
+                name=settings.default_tenant_name,
+                plan="free",
+                status="active",
+                seat_limit=1,
+                monthly_post_quota=500,
+            )
+            session.add(tenant)
+            await session.flush()
+            billing = BillingAccount(tenant_id=tid)
+            session.add(billing)
+            logger.info("Seeded default tenant: id={} plan=free", tid)
+
+        # Optional bootstrap admin user (BOOTSTRAP_ADMIN_EMAIL / PASSWORD)
+        if settings.bootstrap_admin_email and settings.bootstrap_admin_password:
+            from app.core.security import hash_password  # noqa: WPS433
+
+            existing = (
+                await session.execute(select(User).where(User.email == settings.bootstrap_admin_email))
+            ).scalar_one_or_none()
+            if existing is None:
+                admin = User(
+                    email=settings.bootstrap_admin_email,
+                    password_hash=hash_password(settings.bootstrap_admin_password),
+                    display_name="Bootstrap Admin",
+                    is_superadmin=True,
+                    status="active",
+                )
+                session.add(admin)
+                await session.flush()
+                session.add(Membership(user_id=admin.id, tenant_id=tid, role="owner"))
+                logger.info("Seeded bootstrap admin: email={}", admin.email)

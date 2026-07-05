@@ -1,0 +1,43 @@
+# GitHub Release configuration for xiaohongshu-Loop.
+#
+# Controls how the "Generate release notes" button on the Release
+# drafting page organises merged pull requests into sections.
+# The human-written bilingual body (English / Chinese) for each release
+# is kept under installer/docs/RELEASE_NOTES/ and pasted into the
+# "Describe this release" field at publish time. See
+# installer/docs/RELEASE_NOTES/v0.6.0.md for an example.
+
+changelog:
+  exclude:
+    labels:
+      - ignore-for-release
+      - chore/deps
+      - duplicate
+      - invalid
+      - question
+    authors:
+      - dependabot
+      - renovate
+      - github-actions
+  categories:
+    - title: "Breaking Changes 🛠"
+      labels:
+        - breaking
+        - breaking-change
+        - Semver-Major
+    - title: "Exciting New Features 🎉"
+      labels:
+        - enhancement
+        - feature
+        - Semver-Minor
+    - title: "Bug Fixes 🐛"
+      labels:
+        - bug
+        - fix
+    - title: "Documentation 📚"
+      labels:
+        - documentation
+        - docs
+    - title: "Other Changes"
+      labels:
+        - "*"

@@ -149,3 +149,13 @@ _cmsg6.txt
 _commit_msg.txt
 LOOP-STATE.md
 get-cookies.js
+
+# ad-hoc rebuild / login helpers (not part of release pipeline)
+scripts/_rebuild_once.py
+scripts/_rebuild_onedir_once.py
+scripts/zhilian_headed_login.py
+tmp_restore/
+
+# legacy zhilian Java module: only build/ logs/ data/ target/ runtime leftovers
+# remain (sources were moved to liepin/). Keep on disk, don't track.
+zhilian/
