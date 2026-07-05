@@ -1,0 +1,116 @@
+# ===================================================================
+# Application Configuration - Resilience & Security Settings
+# ===================================================================
+
+spring:
+  application:
+    name: get-jobs
+  
+  # Database Configuration
+  datasource:
+    url: jdbc:sqlite:./data/getjobs.db
+    driver-class-name: org.sqlite.JDBC
+    hikari:
+      maximum-pool-size: 10
+      minimum-idle: 2
+      connection-timeout: 30000
+      idle-timeout: 600000
+      max-lifetime: 1800000
+      connection-test-query: SELECT 1
+  
+  # JPA Configuration
+  jpa:
+    hibernate:
+      ddl-auto: update
+    show-sql: false
+    properties:
+      hibernate:
+        dialect: org.hibernate.community.dialect.SQLiteDialect
+        format_sql: true
+
+# ===================================================================
+# HTTP Client Configuration (Resilience)
+# ===================================================================
+app:
+  http:
+    connect-timeout-seconds: 10
+    read-timeout-seconds: 30
+    write-timeout-seconds: 30
+    max-retries: 3
+    retry-base-delay-ms: 1000
+
+  # Rate Limiting
+  rate-limit:
+    max-requests-per-minute: 60
+    max-jobs-per-minute: 30
+    max-api-calls-per-minute: 120
+
+  # CORS Configuration (Security)
+  # Comma-separated allowed origins. Leave empty to deny all cross-origin requests.
+  # Examples:
+  #   - "http://localhost:3000"
+  #   - "https://yourdomain.com"
+  cors:
+    allowed-origins: ""
+    max-age-seconds: 3600
+
+# ===================================================================
+# Server Configuration
+# ===================================================================
+server:
+  port: 8080
+  shutdown: graceful
+  
+  # Graceful shutdown
+  tomcat:
+    connection-timeout: 5000
+    threads:
+      max: 200
+      min-spare: 10
+
+# ===================================================================
+# Actuator Configuration (Health Checks)
+# ===================================================================
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics,prometheus
+      base-path: /actuator
+  endpoint:
+    health:
+      show-details: when_authorized
+      probes:
+        enabled: true
+  health:
+    defaults:
+      enabled: true
+    db:
+      enabled: true
+
+# ===================================================================
+# Logging Configuration
+# ===================================================================
+logging:
+  level:
+    root: INFO
+    com.getjobs: DEBUG
+    com.getjobs.common: DEBUG
+    com.microsoft.playwright: INFO
+    org.springframework: INFO
+    org.hibernate: WARN
+  pattern:
+    console: "%d{yyyy-MM-dd HH:mm:ss.SSS} [%thread] %-5level %logger{36} - %msg%n"
+    file: "%d{yyyy-MM-dd HH:mm:ss.SSS} [%thread] %-5level %logger{36} - %msg%n"
+  file:
+    name: logs/application.log
+    max-size: 100MB
+    max-history: 30
+
+# ===================================================================
+# Playwright Configuration
+# ===================================================================
+playwright:
+  headless: false
+  timeout-ms: 30000
+  navigation-timeout-ms: 60000

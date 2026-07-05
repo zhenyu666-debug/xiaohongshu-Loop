@@ -1,0 +1,39 @@
+plugins {
+    id 'java'
+    id 'org.springframework.boot'
+    id 'io.spring.dependency-management'
+}
+
+java { sourceCompatibility = '21' }
+
+repositories {
+    maven { url 'https://maven.aliyun.com/repository/public' }
+    maven { url 'https://maven.aliyun.com/repository/spring' }
+    mavenCentral()
+}
+
+dependencies {
+    implementation 'org.springframework.boot:spring-boot-starter-web'
+    implementation 'org.springframework.boot:spring-boot-starter-data-jpa'
+    implementation 'org.springframework.boot:spring-boot-starter-jdbc'
+    implementation 'org.springframework.boot:spring-boot-starter-actuator'
+    implementation 'org.xerial:sqlite-jdbc:3.45.1.0'
+    implementation 'org.hibernate.orm:hibernate-community-dialects:6.4.2.Final'
+    implementation 'com.fasterxml.jackson.core:jackson-databind:2.16.1'
+    implementation 'com.fasterxml.jackson.datatype:jackson-datatype-jsr310:2.16.1'
+    implementation 'com.microsoft.playwright:playwright:1.43.0'
+    implementation 'ch.qos.logback:logback-classic:1.4.14'
+    compileOnly 'org.projectlombok:lombok'
+    annotationProcessor 'org.projectlombok:lombok'
+    implementation 'org.slf4j:slf4j-api:2.0.11'
+    implementation 'org.apache.httpcomponents.client5:httpclient5:5.3'
+    testImplementation 'org.springframework.boot:spring-boot-starter-test'
+    testImplementation 'org.mockito:mockito-core:5.8.0'
+}
+
+tasks.named('test') { useJUnitPlatform() }
+
+configurations.all { exclude group: 'org.slf4j', module: 'slf4j-simple' }
+
+bootJar { archiveFileName = 'get-jobs.jar'; enabled = false }
+jar { enabled = true }

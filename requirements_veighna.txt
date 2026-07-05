@@ -1,0 +1,6 @@
+# VeighNa Trader - 因子引擎版依赖
+# 大多数指标为内置实现，无需额外安装
+# alpha101 为可选（pip install alpha101），用于 WorldQuant 101 因子
+
+# 可选：WorldQuant 101 公式因子
+# pip install alpha101

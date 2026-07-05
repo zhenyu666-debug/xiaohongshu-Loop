@@ -103,3 +103,40 @@ Thumbs.db
 
 # 备注：frontend/ 目录要保留（智联 UI），不忽略
 backend/target/
+
+# ===== PyInstaller / 打包产物（要推！用户要求 exe 上仓库） =====
+# dist/ 和 packages/ 保留（包含 xhs-saas-console.exe 单文件 195 MB）
+# 但 onedir 模式生成的 _internal/ 太占体积（465 MB），忽略
+dist/xhs-saas-console/_internal/
+dist/xhs-saas-console-onefile/_internal/
+
+# .spec 是 PyInstaller 生成的，可重新生成；不推
+scripts/xhs-saas-console.spec
+
+# 临时调试脚本（不推）
+scripts/_aud.py
+scripts/_compile_zhilian.bat
+scripts/_compile_zhilian.ps1
+scripts/_fix_quotes.py
+scripts/_fix_readme.py
+scripts/_norm.py
+scripts/_ps_status.ps1
+scripts/_render_svg.py
+scripts/_svgaud.py
+scripts/_tmp_pytest.py
+scripts/_write_vision_block.py
+
+# ===== node_modules（前端依赖，重新 npm install，不推） =====
+node_modules/
+front/node_modules/
+
+# ===== 临时 / 缓存 =====
+*.tmp
+*.bak
+*.swp
+.v052-notes.md
+_SendTo-RecycleBin.ps1
+_cmsg6.txt
+_commit_msg.txt
+LOOP-STATE.md
+get-cookies.js

@@ -1,0 +1,6 @@
+# VeighNa 因子引擎 - 完整依赖（仅供参考）
+# 内置 40+ 技术指标，无需安装任何额外包
+# alpha101 为可选依赖（pip install alpha101）
+
+# 可选：WorldQuant 101 公式因子
+alpha101>=0.1.0

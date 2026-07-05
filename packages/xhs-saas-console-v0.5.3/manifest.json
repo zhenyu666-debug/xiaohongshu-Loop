@@ -1,0 +1,38 @@
+﻿{
+  "product": "xhs-saas-console",
+  "version": "0.5.3",
+  "build": "af6f299",
+  "build_date": "2026-07-05",
+  "platform": "windows-x64",
+  "python": "3.11.9",
+  "architecture": "onefile (1 single .exe, zero external files)",
+  "components": {
+    "launcher": {
+      "file": "xhs-saas-console.exe",
+      "size_mb": 195.6,
+      "purpose": "Unified Console desktop GUI (pywebview + WebView2)",
+      "embedded": [
+        "Python 3.11.9 runtime (~50 MB)",
+        "PySide6 + QtWebEngine (~140 MB)",
+        "pywebview + pystray + Pillow (~15 MB)",
+        "psutil, win32com, cryptography, bcrypt (~5 MB)"
+      ]
+    }
+  },
+  "endpoints": {
+    "launcher_status": "http://127.0.0.1:8765",
+    "launcher_gui": "http://127.0.0.1:8766",
+    "xhs_saas": "http://127.0.0.1:8080",
+    "pbp_api": "http://127.0.0.1:8090",
+    "lakehouse_api": "http://127.0.0.1:8091"
+  },
+  "system_requirements": {
+    "os": "Windows 10/11 (64-bit)",
+    "runtime": "WebView2 Runtime (preinstalled on Win 10/11 2020+)",
+    "ram_mb": 512,
+    "disk_mb": 250,
+    "first_start_seconds": "2-4",
+    "subsequent_start_seconds": "1-2"
+  },
+  "release_notes": "v0.5.3 - Single-file .exe.  No _internal/ folder.  Drop one .exe anywhere and double-click."
+}

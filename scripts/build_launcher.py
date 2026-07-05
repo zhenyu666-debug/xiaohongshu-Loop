@@ -34,7 +34,7 @@ BUILD_DIR = REPO_ROOT / "build"
 SPEC_DIR = REPO_ROOT / "scripts"
 
 APP_NAME = "xhs-saas-console"
-DIST_DIR = DIST_ROOT / APP_NAME          # onedir layout: dist/xhs-saas-console/
+DIST_DIR = DIST_ROOT / f"{APP_NAME}-onefile"   # onefile layout: dist/xhs-saas-console-onefile/xhs-saas-console.exe
 EXE_NAME = f"{APP_NAME}.exe"
 
 HIDDEN_IMPORTS = [
@@ -84,16 +84,21 @@ def build() -> int:
         sys.executable,
         "-m", "PyInstaller",
         "--name", APP_NAME,
-        "--onedir",            # produces dist/xhs-saas-console/xhs-saas-console.exe (~25 MB)
-                                # + dist/xhs-saas-console/_internal/ (deps).  Switch to
-                                # "--onefile" if you need a single .exe (~200 MB, slower startup).
+        "--onefile",           # produces ONE single .exe (~250 MB unstripped, ~190 MB stripped),
+                                # embeds python + Qt + WebView2 + deps into the file via bootloader.
+                                # On launch, bootloader unpacks to %TEMP% and runs.  Slower startup
+                                # (~2-4s cold) but ZERO external files.  Drop into any folder
+                                # and double-click - that's it.  Ideal for distribution.
         "--windowed",          # no console window when double-clicked
         "--noconfirm",
         "--clean",
-        "--distpath", str(DIST_ROOT),
+        # Use a per-app temp dir so multiple onefile exes don't collide and AV can be told
+        # to leave it alone.
+        "--runtime-tmpdir", f"%LOCALAPPDATA%\\{APP_NAME}\\runtime",
+        "--distpath", str(DIST_DIR),
         "--workpath", str(BUILD_DIR),
         "--specpath", str(SPEC_DIR),
-    ]
+    ] 
     for mod in HIDDEN_IMPORTS:
         cmd += ["--hidden-import", mod]
     for mod in EXCLUDES:
@@ -109,17 +114,22 @@ def build() -> int:
         return code
 
     exe_path = DIST_DIR / EXE_NAME
+    print(f"[build] (PyInstaller places exe at {DIST_DIR}{os.sep}{EXE_NAME} when --distpath is the dir)")
     if not exe_path.exists():
-        print(f"[build] ERROR: expected exe missing: {exe_path}", file=sys.stderr)
-        return 3
+        # PyInstaller may have placed it directly in DIST_DIR with EXE_NAME already.
+        alt = DIST_DIR / EXE_NAME
+        if alt.exists():
+            exe_path = alt
+        else:
+            print(f"[build] ERROR: expected exe missing: {exe_path}", file=sys.stderr)
+            return 3
 
     exe_mb = exe_path.stat().st_size / 1024 / 1024
-    bundle_files = sum(p.stat().st_size for p in DIST_DIR.rglob("*") if p.is_file())
-    bundle_mb = bundle_files / 1024 / 1024
     print(f"[build] OK: {exe_path}")
-    print(f"[build] exe size:      {exe_mb:6.1f} MB")
-    print(f"[build] bundle size:   {bundle_mb:6.1f} MB (exe + _internal/)")
-    print(f"[build] Double-click the exe, or run: {exe_path}")
+    print(f"[build] exe size:      {exe_mb:6.1f} MB (single file, everything embedded)")
+    print(f"[build] Place this exe anywhere and double-click - no other files needed.")
+    print(f"[build] On launch it unpacks to %LOCALAPPDATA%\\{APP_NAME}\\runtime\\<random>\\")
+    print(f"[build] First-run: ~2-4s.  Subsequent runs: ~1-2s.")
     return 0
 
 
