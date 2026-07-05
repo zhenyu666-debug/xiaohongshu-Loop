@@ -8,7 +8,7 @@
 
   Build:
     cd installer
-    .\build_msi.ps1 -Version 0.6.0
+    .\build_msi.ps1 -Version 0.6.1
 
   Author: zhenyu666-debug
 -->
@@ -45,9 +45,24 @@
 
     <Media Id="1" Cabinet="xhs-saas-console.cab" EmbedCab="yes" CompressionLevel="high" />
 
+    <!-- Install location property. Bound to WIXUI_INSTALLDIR which
+         WixUI_InstallDir populates from the Destination Folder dialog. -->
+    <Property Id="WIXUI_INSTALLDIR" Value="INSTALLDIR" />
+
     <Directory Id="TARGETDIR" Name="SourceDir">
       <Directory Id="LocalAppDataFolder">
         <Directory Id="INSTALLDIR" Name="xhs-saas-console">
+          <!-- Default value shown in the Destination Folder dialog.
+               When Component is nested inside a Directory, you don't need (and
+               must NOT include) Directory="..." - it inherits the parent's. -->
+          <Component Id="InstallDirMarker">
+            <RegistryValue Root="HKCU"
+                           Key="Software\$(var.Manufacturer)\$(var.ProductName)"
+                           Name="InstallDir"
+                           Type="string"
+                           Value="[INSTALLDIR]"
+                           KeyPath="yes" />
+          </Component>
         </Directory>
         <Directory Id="AppRuntime" Name="xhs-saas-console">
         </Directory>
@@ -58,6 +73,10 @@
       <Directory Id="DesktopFolder" />
     </Directory>
 
+    <!-- Shared icon resource for both desktop and start-menu shortcuts.
+         Source path is overridden on the candle command-line via -dAppIcon=. -->
+    <Icon Id="AppIcon" SourceFile="$(var.AppIcon)" />
+
     <Feature Id="MainFeature"
              Title="$(var.ProductName)"
              Level="1"
@@ -66,6 +85,40 @@
              Display="expand">
 
       <ComponentGroupRef Id="HarvestedFiles" />
+
+      <Component Id="DesktopShortcut" Directory="DesktopFolder" Guid="12345678-90AB-CDEF-1234-567890ABCDEF">
+        <Shortcut Id="DesktopAppShortcut"
+                  Name="$(var.ShortName)"
+                  Target="[#MainExe]"
+                  WorkingDirectory="INSTALLDIR"
+                  Description="Open xiaohongshu-Loop Console"
+                  Icon="AppIcon"
+                  IconIndex="0" />
+        <!-- ARPINSTALLPERUSER is declared as a top-level <Property> below,
+             so we don't put a ShortcutProperty child here (WiX rejects
+             ShortcutProperty inside Component). -->
+        <RegistryValue Root="HKCU"
+                       Key="Software\$(var.Manufacturer)\$(var.ProductName)"
+                       Name="DesktopShortcutInstalled"
+                       Type="integer"
+                       Value="1"
+                       KeyPath="yes" />
+      </Component>
+      <!-- Pure-uninstall hook for the desktop .lnk. WiX auto-removes
+           the shortcut when the parent Component is uninstalled, but a
+           belt-and-braces RemoveFile makes the desktop spotless. -->
+      <Component Id="DesktopShortcutCleanup" Directory="DesktopFolder" Guid="7C0D9F8E-1A2B-4C3D-9E4F-5A6B7C8D9E0F">
+        <RemoveFile Id="RemoveDesktopShortcut"
+                    On="uninstall"
+                    Name="$(var.ShortName).lnk"
+                    Directory="DesktopFolder" />
+        <RegistryValue Root="HKCU"
+                       Key="Software\$(var.Manufacturer)\$(var.ProductName)"
+                       Name="DesktopShortcutCleanup"
+                       Type="integer"
+                       Value="1"
+                       KeyPath="yes" />
+      </Component>
 
       <Component Id="StartMenuDocs" Directory="AppMenuFolder" Guid="7FBB1D9A-127A-4384-A7F8-DCE8D1715DB0">
         <util:InternetShortcut Id="DocsShortcut"
@@ -81,27 +134,14 @@
                        KeyPath="yes" />
       </Component>
 
-      <Component Id="DesktopShortcut" Directory="DesktopFolder" Guid="12345678-90AB-CDEF-1234-567890ABCDEF">
-        <Shortcut Id="DesktopAppShortcut"
-                  Name="$(var.ShortName)"
-                  Target="[#MainExe]"
-                  WorkingDirectory="INSTALLDIR"
-                  Description="Open xiaohongshu-Loop Console" />
-        <RemoveFile Id="RemoveDesktopShortcut" On="uninstall" Name="$(var.ShortName).lnk" />
-        <RegistryValue Root="HKCU"
-                       Key="Software\$(var.Manufacturer)\$(var.ProductName)"
-                       Name="DesktopShortcutInstalled"
-                       Type="integer"
-                       Value="1"
-                       KeyPath="yes" />
-      </Component>
-
       <Component Id="AppMenuLauncher" Directory="AppMenuFolder" Guid="ABCDEF12-3456-7890-ABCD-EF1234567890">
         <Shortcut Id="StartMenuLauncher"
                   Name="$(var.ProductName)"
                   Target="[#MainExe]"
                   WorkingDirectory="INSTALLDIR"
-                  Description="Launch xiaohongshu-Loop Console" />
+                  Description="Launch xiaohongshu-Loop Console"
+                  Icon="AppIcon"
+                  IconIndex="0" />
         <Shortcut Id="StartMenuUninstall"
                   Name="Uninstall $(var.ProductName)"
                   Target="[$(var.ShortName)]"
@@ -124,10 +164,29 @@
                   ExeCommand="cmd.exe /c if exist &quot;[AppRuntime]runtime&quot; rmdir /s /q &quot;[AppRuntime]runtime&quot;"
                   Return="ignore" />
 
+    <!-- WixUI_InstallDir adds: Welcome -> License (skipped, no RTF) -> InstallDir -> Install -> Finish.
+         The InstallDir dialog exposes the customizable folder. -->
     <UI>
-      <UIRef Id="WixUI_Minimal" />
+      <UIRef Id="WixUI_InstallDir" />
+      <!-- The optional EULA dialog in WixUI_Advanced is not used; the
+           Installer skips straight from Welcome to InstallDir. -->
+      <Publish Dialog="WelcomeDlg"
+               Control="Next"
+               Event="NewDialog"
+               Value="InstallDirDlg"
+               Order="2">1</Publish>
+      <Publish Dialog="InstallDirDlg"
+               Control="Back"
+               Event="NewDialog"
+               Value="WelcomeDlg"
+               Order="2">1</Publish>
+      <Publish Dialog="InstallDirDlg"
+               Control="Next"
+               Event="NewDialog"
+               Value="VerifyReadyDlg"
+               Order="2">1</Publish>
       <Property Id="WIXUI_EXITDIALOGOPTIONALTEXT"
-                Value="The xiaohongshu-Loop Console has been installed. A shortcut is on your desktop." />
+                Value="The xiaohongshu-Loop Console has been installed at [INSTALLDIR] and a shortcut is on your desktop." />
     </UI>
 
     <Property Id="ARPHELPLINK"

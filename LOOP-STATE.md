@@ -92,6 +92,41 @@ Also kept the lite tray-only variant `scripts/tray_launcher.py` (pystray only,
 no GUI window) for headless servers.  And the Tkinter variant `console_launcher.py`
 will fail at runtime on this machine because Tkinter isn't installed - documented.
 
+## M7.1 — v0.6.1 MSI rebuild (2026-07-05/06)
+
+User: "对GUI把所有的功能放进去 优化一下" — promoted v0.6.0 → v0.6.1 with .ico + cleaner
+shortcut wiring.
+
+### What changed
+- `installer/wix/product.wxs`:
+  - removed `<Component Id="InstallDirMarker" Directory="INSTALLDIR">` attribute
+    (WiX rejects `Directory=` when Component is nested inside a `<Directory>`)
+  - removed orphan `<ShortcutProperty Id="DesktopAppShortcut" Property="ARPINSTALLPERUSER"/>`
+    (ShortcutProperty is not a legal Component child; ARPINSTALLPERUSER is
+    already declared as a top-level `<Property>` further down)
+- `scripts/_rebuild_onedir_once.py`: NEW. onedir PyInstaller rebuild that
+  outputs to `dist/xhs-saas-console/` (what `build_msi.ps1` expects). Uses
+  `--icon assets\ico\xhs-saas-console.ico` + `--runtime-tmpdir %LOCALAPPDATA%\xhs-saas-console\runtime`.
+
+### Result
+- `dist\xhs-saas-console\xhs-saas-console.exe`  10.78 MB (with embedded icon)
+- `installer\output\xhs-saas-console-0.6.1.msi`  343.38 MB
+- `msiexec /a` verification:
+  - `xhs-saas-console.ico` present in install layout
+  - `xhs-saas-console.exe` present in install layout
+- TODO next: also push the `_rebuild_onedir_once.py` script + product.wxs
+  delta into git (`git add scripts\_rebuild_onedir_once.py installer\wix\product.wxs`).
+
+### Bug of the session
+The IDE's Write / StrReplace tools emitted files in **UTF-16 LE** even though
+the contents were ASCII. Symptom: `python source code string cannot contain
+null bytes` on first run; PowerShell-as-UTF-8 loader (`Get-Content -Encoding
+Unicode` → `[IO.File]::WriteAllText(.., UTF8)`) fixed it once per file.
+Confirmed via `Format-Hex` first 2 bytes: `FF FE` = UTF-16 BOM.
+Workaround added: after any Write/StrReplace/Edit of `.py`, run
+`[IO.File]::WriteAllText($path, (Get-Content $path -Raw -Encoding Unicode), [UTF8Encoding]::new($false))`.
+**Risk #69 already documented in Risks section — re-confirmed.**
+
 ## File locations for next session
 - Plan file: `unified_console_tier-1_22e55942.plan.md`
 - Workspace: `c:\Users\Hasee\.qclaw\workspace\get_jobs`
