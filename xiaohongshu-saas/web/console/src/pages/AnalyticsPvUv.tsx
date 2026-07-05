@@ -33,7 +33,7 @@ export default function AnalyticsPvUv() {
     queryKey: ["analytics", "series", days, metrics],
     queryFn: async () => {
       const results = await Promise.all(
-        metrics.map((m) => api.get<SeriesResp>(`/v1/lakehouse/api/series/${m}?days=${days}`).then((r) => r.data)),
+        metrics.map((m) => api.get<SeriesResp>(`/v1/lakehouse/series/${m}?days=${days}`).then((r) => r.data)),
       );
       return results;
     },

@@ -15,12 +15,12 @@ export default function Tasks() {
   const qc = useQueryClient();
   const { data, isLoading, isError } = useQuery({
     queryKey: ["tasks"],
-    queryFn: async () => (await api.get<Task[]>("/scheduler/tasks/")).data,
+    queryFn: async () => (await api.get<Task[]>("/tasks")).data,
     refetchInterval: 30_000,
   });
 
   const triggerMut = useMutation({
-    mutationFn: async (id: number) => api.post(`/scheduler/tasks/${id}/run/`),
+    mutationFn: async (id: number) => api.post(`/tasks/${id}/run`),
     onSuccess: () => {
       toast.success("任务已触发");
       qc.invalidateQueries({ queryKey: ["tasks"] });
@@ -29,7 +29,7 @@ export default function Tasks() {
   });
 
   const toggleMut = useMutation({
-    mutationFn: async (t: Task) => api.patch(`/scheduler/tasks/${t.id}/`, { enabled: !t.enabled }),
+    mutationFn: async (t: Task) => api.patch(`/tasks/${t.id}`, { enabled: !t.enabled }),
     onSuccess: (_d, t) => {
       toast.success(`已${t.enabled ? "停用" : "启用"} ${t.name}`);
       qc.invalidateQueries({ queryKey: ["tasks"] });

@@ -22,7 +22,7 @@ export default function CandidateDetail() {
 
   const { data, isLoading, isError, error } = useQuery({
     queryKey: ["candidates", "detail", cid],
-    queryFn: async () => (await api.get<CandidateDetail>(`/v1/pbp/api/candidates/${cid}`)).data,
+    queryFn: async () => (await api.get<CandidateDetail>(`/v1/pbp/candidates/${cid}`)).data,
     enabled: Number.isFinite(cid) && cid > 0,
   });
 
