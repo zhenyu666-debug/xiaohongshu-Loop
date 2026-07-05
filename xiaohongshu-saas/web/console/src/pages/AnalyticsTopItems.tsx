@@ -20,7 +20,7 @@ export default function AnalyticsTopItems() {
   const { data, isLoading, isError } = useQuery({
     queryKey: ["analytics", "top-items", metric, limit],
     queryFn: async () =>
-      (await api.get<TopResp>(`/v1/lakehouse/api/top-items?metric=${metric}&limit=${limit}`)).data,
+      (await api.get<TopResp>(`/v1/lakehouse/top-items?metric=${metric}&limit=${limit}`)).data,
     refetchInterval: 60_000,
   });
 

@@ -41,7 +41,7 @@ export default function CandidatesList() {
       const params: Record<string, string | number> = { limit: 1000 };
       if (scoreMin) params.score_min = parseFloat(scoreMin);
       if (scoreMax) params.score_max = parseFloat(scoreMax);
-      const r = await api.get<ListResp>("/v1/pbp/api/candidates", { params });
+      const r = await api.get<ListResp>("/v1/pbp/candidates", { params });
       return r.data;
     },
   });

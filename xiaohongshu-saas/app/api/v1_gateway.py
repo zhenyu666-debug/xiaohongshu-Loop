@@ -34,7 +34,9 @@ async def _proxy(short: str, request: Request, path: str) -> Any:
         target += f"?{request.url.query}"
     body = await request.body() if request.method in {"POST", "PUT", "PATCH"} else None
     try:
-        async with httpx.AsyncClient(timeout=_UPSTREAM_TIMEOUT) as client:
+        # trust_env=False: on Windows the system-level proxy turns localhost
+        # requests into 502s (httpx reads HTTP_PROXY/HTTPS_PROXY automatically).
+        async with httpx.AsyncClient(timeout=_UPSTREAM_TIMEOUT, trust_env=False) as client:
             r = await client.request(request.method, target, content=body)
     except httpx.RequestError as e:
         raise HTTPException(status_code=502, detail=f"upstream {short} unreachable: {e!s}") from e
@@ -61,7 +63,7 @@ async def health_all() -> dict:
         cached["cache_hit"] = True
         return cached
     tasks = []
-    async with httpx.AsyncClient() as client:
+    async with httpx.AsyncClient(trust_env=False) as client:
         # self
         tasks.append(_probe_one(client, "xhs-saas", f"http://localhost:{settings.app_port}", "/api/healthz"))
         for short, (base, _mount) in _UPSTREAM_PATHS.items():

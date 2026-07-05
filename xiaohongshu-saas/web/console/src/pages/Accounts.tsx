@@ -12,11 +12,11 @@ export default function Accounts() {
   const qc = useQueryClient();
   const { data, isLoading, isError } = useQuery({
     queryKey: ["accounts"],
-    queryFn: async () => (await api.get<Account[]>("/accounts/")).data,
+    queryFn: async () => (await api.get<Account[]>("/accounts")).data,
   });
 
   const loginMut = useMutation({
-    mutationFn: async (id: number) => api.post(`/accounts/${id}/login/`),
+    mutationFn: async (id: number) => api.post(`/accounts/${id}/login`),
     onSuccess: () => {
       toast.success("登录任务已启动");
       qc.invalidateQueries({ queryKey: ["accounts"] });
