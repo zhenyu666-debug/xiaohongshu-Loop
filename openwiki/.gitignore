@@ -1,0 +1,14 @@
+# OpenWiki documentation is committed to the repo on purpose.
+#
+# These files are owned by `openwiki --update`
+# (https://github.com/langchain-ai/openwiki) and refreshed nightly by
+# `.github/workflows/openwiki-update.yml`. The workflow opens a PR with
+# the updated files; humans review and merge.
+#
+# Do not hand-edit the generated `.md` files unless you are absolutely
+# sure. If you need to influence the content, change the project source
+# code or `openwiki/quickstart.md`, then run `openwiki --update` and
+# commit the diff.
+#
+# This .gitignore intentionally has no rules. It exists only so that
+# `openwiki --init` does not accidentally stash files here.
