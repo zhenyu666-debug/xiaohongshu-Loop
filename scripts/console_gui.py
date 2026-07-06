@@ -48,28 +48,34 @@ LOCAL_GUI_PORT = 8766
 
 SERVICES = [
     {
-        "name": "pbp-api",
-        "cwd": REPO_ROOT / "donor-screener-pbp",
-        "module": "pbp_api.main:app",
-        "port": 8090,
-        "color": "#38bdf8",
-        "label": "供体筛选服务 · 候选分子 API",
-    },
-    {
-        "name": "lakehouse-api",
-        "cwd": REPO_ROOT / "data-lakehouse",
-        "module": "lakehouse_api.main:app",
-        "port": 8091,
-        "color": "#a78bfa",
-        "label": "数据湖仓 · 分析指标 API",
-    },
-    {
         "name": "xhs-saas",
+        "enabled": True,
         "cwd": REPO_ROOT / "xiaohongshu-saas",
         "module": "app.main:app",
         "port": 8080,
         "color": "#34d399",
         "label": "小红书 SaaS · 网关 + 控制台宿主",
+    },
+    {
+        "name": "pbp-api",
+        "enabled": False,  # donor-screener-pbp source moved to private repo (CHANGELOG 0.6.1);
+                            # this slot is reserved for when the standalone exe becomes available.
+                            # Leave disabled: spawning it would ModuleNotFoundError on every restart.
+        "cwd": REPO_ROOT / "donor-screener-pbp",
+        "module": "pbp_api.main:app",
+        "port": 8090,
+        "color": "#38bdf8",
+        "label": "供体筛选服务 · 候选分子 API（暂未启用）",
+    },
+    {
+        "name": "lakehouse-api",
+        "enabled": False,  # data-lakehouse source moved to private repo (CHANGELOG 0.6.1);
+                            # same story as pbp-api above.
+        "cwd": REPO_ROOT / "data-lakehouse",
+        "module": "lakehouse_api.main:app",
+        "port": 8091,
+        "color": "#a78bfa",
+        "label": "数据湖仓 · 分析指标 API（暂未启用）",
     },
 ]
 
@@ -238,6 +244,15 @@ GUI_HTML = r"""<!doctype html>
   .state.starting { background: #422006; color: var(--warn); }
   .state.healthy { background: #052e16; color: var(--accent); }
   .state.error { background: #450a0a; color: var(--danger); }
+  .state.disabled {
+    background: #1a1f2e; color: var(--muted);
+    border: 1px dashed #334155;
+  }
+  .card.disabled-card {
+    opacity: 0.55;
+    background: #0e1626;
+    border-style: dashed;
+  }
   pre.log {
     margin: 0; background: #020617;
     color: #cbd5f5; font-family: Consolas, monospace; font-size: 11px;
@@ -326,14 +341,22 @@ GUI_HTML = r"""<!doctype html>
   }
   window.updateState = (payload) => {
     const data = JSON.parse(payload);
-    const order = ['pbp-api', 'lakehouse-api', 'xhs-saas'];
+    const order = ['xhs-saas', 'pbp-api', 'lakehouse-api'];
     let anyAlive = false; let allHealthy = true;
     for (const n of order) {
       const sv = data.services[n];
+      const card = cardEls[n];
+      if (!card) continue;
       let kind, msg;
-      if (!sv.running) { kind = 'stopped'; msg = '● 已停止'; allHealthy = false; }
-      else if (sv.healthy) { kind = 'healthy'; msg = '● 健康'; anyAlive = true; }
-      else { kind = 'starting'; msg = '● 启动中…'; anyAlive = true; allHealthy = false; }
+      if (sv.state === 'disabled') {
+        kind = 'disabled'; msg = '○ 未启用';
+        if (card.el) card.el.classList.add('disabled-card');
+      } else {
+        if (card.el) card.el.classList.remove('disabled-card');
+        if (!sv.running) { kind = 'stopped'; msg = '● 已停止'; allHealthy = false; }
+        else if (sv.healthy) { kind = 'healthy'; msg = '● 健康'; anyAlive = true; }
+        else { kind = 'starting'; msg = '● 启动中…'; anyAlive = true; allHealthy = false; }
+      }
       setState(n, kind, msg);
     }
     document.getElementById('overall').textContent =
@@ -355,7 +378,7 @@ def _build_service_cards() -> str:
     for svc in SERVICES:
         cards.append(
             f"""
-      <div class="card">
+      <div class="card" id="card-{svc['name']}">
         <div class="card-head">
           <span class="name">{svc['name']}</span>
           <span class="state stopped" data-name="{svc['name']}">● 已停止</span>
@@ -374,7 +397,8 @@ def _build_card_index() -> str:
     return (
         "{"
         + ", ".join(
-            f"'{svc['name']}': {{state: document.querySelector('.state[data-name=\\\"{svc['name']}\\\"]'),"
+            f"'{svc['name']}': {{el: document.getElementById('card-{svc['name']}'),"
+            f" state: document.querySelector('.state[data-name=\\\"{svc['name']}\\\"]'),"
             f" swatch: document.querySelectorAll('.swatch')[{i}],"
             f" port: {svc['port']}}}"
             for i, svc in enumerate(SERVICES)
@@ -461,11 +485,24 @@ class Launcher:
 
     # ---------------- lifecycle ----------------
     def start_all(self) -> str:
-        if any(st.proc and st.proc.poll() is None for st in self.states.values()):
+        any_alive = any(st.proc and st.proc.poll() is None for st in self.states.values())
+        if any_alive:
             self._log("服务已在运行。")
             return "already-running"
-        self._log("正在启动三个服务（本地 uvicorn）…")
-        for svc in SERVICES:
+
+        enabled = [s for s in SERVICES if s.get("enabled", True)]
+        disabled = [s for s in SERVICES if not s.get("enabled", True)]
+        if not enabled:
+            self._log("没有已启用的服务，跳过启动。")
+            return "no-enabled-services"
+        if disabled:
+            names = ", ".join(s["name"] for s in disabled)
+            self._log(
+                f"正在启动 {len(enabled)} 个服务（{names} 已禁用），本地 uvicorn…"
+            )
+        else:
+            self._log("正在启动三个服务（本地 uvicorn）…")
+        for svc in enabled:
             self._spawn(svc["name"])
         if self._supervisor is None or not self._supervisor.is_alive():
             self._supervisor = threading.Thread(target=self._supervise, daemon=True)
@@ -477,6 +514,10 @@ class Launcher:
         if st.proc and st.proc.poll() is None:
             return
         cfg = st.cfg
+        if not cfg.get("enabled", True):
+            st.last_error = "disabled in console config"
+            self._log(f"[{name}] 已禁用（配置中 enabled=false），不启动。")
+            return
         env = os.environ.copy()
         env["PYTHONUNBUFFERED"] = "1"
         env["PYTHONIOENCODING"] = "utf-8"
@@ -529,6 +570,9 @@ class Launcher:
         while not self._stopping:
             for svc in SERVICES:
                 st = self.states[svc["name"]]
+                if not cfg_enabled(svc):
+                    # Disabled services don't pollute all_healthy and aren't health-checked.
+                    continue
                 if not st.proc:
                     st.healthy = False
                     continue
@@ -541,10 +585,11 @@ class Launcher:
                 if ok and not st.healthy:
                     self._log(f"[{svc['name']}] 健康检查通过：{url}")
                 st.healthy = ok
-            ready = all(self.states[s["name"]].healthy for s in SERVICES)
+            enabled_svcs = [s for s in SERVICES if s.get("enabled", True)]
+            ready = all(self.states[s["name"]].healthy for s in enabled_svcs) and bool(enabled_svcs)
             if ready and not all_ready_logged:
                 all_ready_logged = True
-                self._log("三个服务全部健康。")
+                self._log("所有已启用服务全部健康。")
                 self._log(f"控制台地址：{CONSOLE_URL}")
             elif not ready:
                 all_ready_logged = False
@@ -572,15 +617,31 @@ class Launcher:
         any_proc = False
         for svc in SERVICES:
             st = self.states[svc["name"]]
+            enabled = svc.get("enabled", True)
             running = bool(st.proc and st.proc.poll() is None)
+            if not enabled:
+                # Disabled services are explicitly *not* counted toward all_healthy
+                # and are not flagged as errors.  They show up in the status with
+                # a distinct "disabled" state so the UI can render them greyed out.
+                out["services"][svc["name"]] = {
+                    "port": svc["port"],
+                    "enabled": False,
+                    "running": False,
+                    "healthy": False,
+                    "state": "disabled",
+                    "last_error": "",
+                }
+                continue
             if running:
                 any_proc = True
             if not st.healthy:
                 all_healthy = False
             out["services"][svc["name"]] = {
                 "port": svc["port"],
+                "enabled": True,
                 "running": running,
                 "healthy": st.healthy,
+                "state": "running" if running else "stopped",
                 "last_error": st.last_error,
             }
         out["all_healthy"] = all_healthy and any_proc
@@ -759,6 +820,14 @@ def main() -> int:
             time.sleep(0.5)
 
     threading.Thread(target=poll_loop, daemon=True).start()
+
+    # Auto-start the enabled services once the launcher has finished wiring up its
+    # UI / supervisor.  Without this, the user has to click "启动服务" in the
+    # WebView2 window, which is friction for a single-purpose console.
+    try:
+        launcher.start_all()
+    except Exception as e:
+        launcher._log(f"自动启动服务失败：{e}")
 
     launcher._log(
         f"{APP_NAME} 已就绪，正在启动系统托盘图标和主窗口…"
