@@ -58,24 +58,21 @@ SERVICES = [
     },
     {
         "name": "pbp-api",
-        "enabled": False,  # donor-screener-pbp source moved to private repo (CHANGELOG 0.6.1);
-                            # this slot is reserved for when the standalone exe becomes available.
-                            # Leave disabled: spawning it would ModuleNotFoundError on every restart.
+        "enabled": True,  # restored 2026-07-06 from backup_20260705_143940/pbp_api/
         "cwd": REPO_ROOT / "donor-screener-pbp",
         "module": "pbp_api.main:app",
         "port": 8090,
         "color": "#38bdf8",
-        "label": "供体筛选服务 · 候选分子 API（暂未启用）",
+        "label": "供体筛选服务 · 候选分子 API",
     },
     {
         "name": "lakehouse-api",
-        "enabled": False,  # data-lakehouse source moved to private repo (CHANGELOG 0.6.1);
-                            # same story as pbp-api above.
+        "enabled": True,  # restored 2026-07-06 from backup_20260705_143940/lakehouse_api/
         "cwd": REPO_ROOT / "data-lakehouse",
         "module": "lakehouse_api.main:app",
         "port": 8091,
         "color": "#a78bfa",
-        "label": "数据湖仓 · 分析指标 API（暂未启用）",
+        "label": "数据湖仓 · 分析指标 API",
     },
 ]
 

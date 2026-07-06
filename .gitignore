@@ -9,6 +9,10 @@ build/resolvedMainClassName
 .gradle/
 out/
 target/
+# Gradle auto-creates empty src/main/java/com/… for the root project; legacy Java
+# modules (shared, liepin, zhilian, qcc) are still wired through Gradle but the
+# project has fully migrated to xiaohongshu-saas/. Keep src/ ignored.
+src/
 *.class
 *.jar
 *.war
@@ -62,7 +66,30 @@ venv/
 
 # ===== Unrelated projects =====
 donor-number-screener/
-data-lakehouse/
+# data-lakehouse/ contains heavy non-source data (flink jars, iceberg-rest/, charts/, replay/, …);
+# ignore everything inside data-lakehouse/ explicitly, allow only the Python source tree.
+data-lakehouse/flink/
+data-lakehouse/iceberg-rest/
+data-lakehouse/replay/
+data-lakehouse/charts/
+data-lakehouse/notebooks/
+data-lakehouse/duckdb_railway/
+data-lakehouse/data/
+data-lakehouse/__pycache__/
+data-lakehouse/*.csv
+data-lakehouse/*.csv.gz
+data-lakehouse/*.jar
+data-lakehouse/*.html
+data-lakehouse/*.py
+data-lakehouse/*.ps1
+data-lakehouse/*.sql
+data-lakehouse/*.log
+data-lakehouse/LOOP-STATE.md
+data-lakehouse/_*.py
+data-lakehouse/_*.txt
+data-lakehouse/_*.sql
+data-lakehouse/_*.json
+data-lakehouse/dl.cs
 qcc_scraper*
 check_*.py
 _check_*.py
