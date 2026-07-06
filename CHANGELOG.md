@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- `CHANGELOG.md` is now stored as UTF-8 (was UTF-16 LE with BOM up through `d629806`), so `git diff` shows proper text patches instead of "Binary files differ".
+  `CHANGELOG.md` 现在以 UTF-8 存储（`d629806` 之前为 UTF-16 LE 带 BOM），`git diff` 将显示文本补丁而非「Binary files differ」。
+- Added `xhs-saas-console.exe` (onefile, 195 MB) as a sibling asset to the v0.6.1 release, alongside the 159 MB MSI; users who prefer direct-run have a smaller bootstrap.
+  v0.6.1 release 新增 `xhs-saas-console.exe`（onefile，195 MB）作为补充下载，与 159 MB MSI 并列，供偏好直接运行的用户使用更小的引导文件。
+
 ## [0.6.1] - 2026-07-06
 ### Changed
 - Repo split: donor-screener-*, get-jobs (recruit crawlers), li_s_additives, vnpy, uml-p-screener moved to private repos. Main repo focuses on xiaohongshu-saas.
