@@ -49,6 +49,7 @@ async def init_db() -> None:
 
 async def _seed_default_tenant() -> None:
     """Ensure a `default` tenant exists so single-tenant deployments keep working."""
+    from app.models import BillingAccount, Membership, Tenant, User  # noqa: WPS433
     from sqlalchemy import select  # noqa: WPS433
 
     async with session_scope() as session:

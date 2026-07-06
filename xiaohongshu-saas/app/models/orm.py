@@ -31,7 +31,6 @@ class Tenant(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now(), onupdate=func.now())
 
-    users: Mapped[list["User"]] = relationship(back_populates="tenant")
     billing: Mapped[Optional["BillingAccount"]] = relationship(back_populates="tenant", uselist=False)
 
 
@@ -50,7 +49,6 @@ class User(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
 
     memberships: Mapped[list["Membership"]] = relationship(back_populates="user", cascade="all, delete-orphan")
-    tenant: Mapped[Optional[Tenant]] = relationship(back_populates="users", secondary="memberships")
 
 
 class Membership(Base):
