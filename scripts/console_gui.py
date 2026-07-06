@@ -567,7 +567,7 @@ class Launcher:
         while not self._stopping:
             for svc in SERVICES:
                 st = self.states[svc["name"]]
-                if not cfg_enabled(svc):
+                if not svc.get("enabled", True):
                     # Disabled services don't pollute all_healthy and aren't health-checked.
                     continue
                 if not st.proc:
