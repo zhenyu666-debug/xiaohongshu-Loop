@@ -1,7 +1,7 @@
 # LOOP-STATExhs.md
 
-Last updated: 2026-07-03 16:16 UTC+8
-Session: 自动发帖打通
+Last updated: 2026-07-06 09:30 UTC+8
+Session: console 启动 bug 修复 + UTF-16 编码修复
 
 ## 架构摘要
 
@@ -84,6 +84,75 @@ Session: 自动发帖打通
 | P2 | APScheduler 持久化 | ✅ `_tick_task` 写 `next_run_at` 到 DB |
 | P2 | DouyinAdapter 未实现 | 三个方法 raise NotImplementedError |
 
+## 2026-07-06 第四次 session 改动（方案 C-lite）
+
+### 背景
+- 用户打开 v0.6.1 console exe（已安装）后，看到三个服务卡片的灯一直是灰色
+- 之前的 exe 上 console_gui.main() 启动后**没有自动调 start_all()**（必须用户手动点"启动服务"按钮）
+- 而就算点了按钮，pbp-api / lakehouse-api 也会失败：
+  - PyInstaller bootloader 把 sys.executable 设成了 launcher 自己，`-m uvicorn` 静默被吞
+  - donor-screener-pbp / data-lakehouse 源码早就搬到私有仓库（CHANGELOG 0.6.1），本地只剩 `__pycache__/*.pyc`
+
+### item: console SERVICES 加 `enabled` 字段
+- **status**: done
+- **改动** (scripts/console_gui.py):
+  - 每个 service 加 `enabled: bool` 字段，默认 True 保持后向兼容
+  - 实际值：xhs-saas=True, pbp-api=False, lakehouse-api=False（带注释说明源码已搬走）
+  - `_spawn()`：disabled 直接 return，不 spawn，并把 `last_error` 标 "disabled in console config"
+  - `_supervise()`：disabled 服务 `continue`，不参与健康检查，不污染 `all_healthy`
+  - `snapshot()`：disabled 服务的 `state` 字段是 `"disabled"`（区别于 `"stopped"`），明确带 `enabled: false`
+  - `start_all()`：先列 enabled/disabled 两个 list，log 里打印"正在启动 N 个服务（M 已禁用）"
+- **下次注意**: 当未来 pbp_api / lakehouse_api 源码拿回来后，把 `enabled` 改回 True 即可，snapshot / GUI / supervise 都不需要改
+
+### item: 前端 GUI 显示 disabled 卡片（灰色虚线边框）
+- **status**: done
+- **改动** (scripts/console_gui.py HTML/CSS/JS):
+  - 加 `.state.disabled` 徽章样式（深灰底 + dashed border）+ `.card.disabled-card` 整卡半透明 + 虚线
+  - 卡片 `<div class="card">` 加 `id="card-{name}"`，`_build_card_index` 加 `el: document.getElementById('card-<name>')`
+  - `updateState()` JS：发现 `sv.state === 'disabled'` → 加 `.disabled-card` 类 + 显示"○ 未启用"
+  - `all_healthy` 计算时**忽略 disabled**，所以就算两个 disabled 也只算 xhs-saas 一个
+- **下次注意**: disabled 卡片状态是"○ 未启用"，不是"● 已停止"——用户能一眼看出来这是"被主动禁用"而不是"出了故障"
+
+### item: main() 自动调 start_all()（修 Bug 1）
+- **status**: done
+- **改动** (scripts/console_gui.py main()):
+  - 在 `webview.start()` 之前、status/gui server 启动之后，try/except 包一层 `launcher.start_all()`
+  - try/except 是为了不让自动启动的失败阻止 WebView 打开（用户至少能看到日志）
+- **下次注意**: 这是改的"启动后自动跑"，不是"启动前等待"；如果某个 enabled 服务需要几十秒启动，WebView 窗口会立刻显示"启动中…"状态（supervisor 每 1.5s 轮询）
+
+### item: 修复 5 个 xhs-saas UTF-16 文件
+- **status**: done
+- **改动**（PowerShell `[System.IO.File]::WriteAllText($f, $content, [System.Text.UTF8Encoding]::new($false))` 转码）:
+  - `xiaohongshu-saas/app/api/auth.py` (8650 nulls)
+  - `xiaohongshu-saas/app/api/billing.py` (4297 nulls)
+  - `xiaohongshu-saas/app/api/tenants.py` (7423 nulls)
+  - `xiaohongshu-saas/app/core/auth.py` (5798 nulls) ← 这个最先暴露，因为 accounts.py 第一行 import 它
+  - `xiaohongshu-saas/app/core/security.py` (4926 nulls)
+- **根因**: HEAD 这些文件本来就是 UTF-8，working tree 被某次工具保存改成了 UTF-16 LE + BOM（跟 CHANGELOG.md 之前那次的根因一样）
+- **影响**: git diff 现在把它们当 binary file 处理（`Bin N -> M bytes`），下次改动才会正常显示 text diff
+- **下次注意**:
+  - 当 workspace 又出现 NUL bytes 时，记得先 `Format-Hex <file> | Select -First 2` 看一下首字节（FF FE = UTF-16 LE BOM，EF BB BF = UTF-8 BOM，FF FE 22 00 = UTF-16 LE 文本）
+  - 编辑器或 sync 工具保存时如果把"另存为"对话框里默认选错，会从 UTF-8 变成 UTF-16
+
+### item: 暴露下一个真实问题（不在本次 commit 范围）
+- **status**: open（需要下一个 commit 修）
+- **问题**: xhs-saas 启动时 uvicorn 报 `ImportError: email-validator is not installed, run 'pip install pydantic[email]'`
+- **来源**: `xiaohongshu-saas/app/api/auth.py` 用 `EmailStr` pydantic 字段
+- **修法**: `pip install 'pydantic[email]'` 或 `pip install email-validator`
+- **意义**: **这正是本次改造的核心收益之一**——以前 PyInstaller bootloader 静默吞错，用户只看到"灯是灰的"；现在 stderr 直接流进 launcher.log，用户能看懂下一步该做什么
+- **下次注意**: 装好 email-validator 后还要装 `pyproject.toml` 里列的其他 optional deps（python-jose、python-multipart 之类），用 `pip install -e ".[dev]"` 一把搞定
+
+### 剩余待办（仅本次 session）
+| 优先级 | 待办 | 状态 |
+|---|---|---|
+| P0 | console 自动启动 | ✅ main() 调 start_all() |
+| P0 | pbp-api / lakehouse-api 不再假装失败 | ✅ enabled=False，state=disabled |
+| P0 | xhs-saas 真实错误能看见 | ✅ PyInstaller 不再吞 stderr |
+| P1 | xhs-saas 缺 email-validator | ❌ `pip install 'pydantic[email]'` |
+| P1 | pbp_api / lakehouse_api 源码拿回来 | ❌ 源码在私有仓库，需要先 `git pull` |
+| P2 | 重新打 console exe + MSI | ❌ 跑 `installer/build.ps1 -Version 0.6.2` |
+| P2 | 清理 `src/` untracked 残留 | ❌ 是 build 产物或工具生成，需要看 .gitignore |
+
 ## 测试命令
 
 ```bash
@@ -115,20 +184,20 @@ asyncio.run(go())
 "
 ```
 
-## 未 push 的改动（需在 git bash 手动执行）
+## 已推送的改动（最近一次 commit）
 
-```bash
-cd c:/Users/Hasee/.qclaw/workspace/get_jobs
-git add README.md \
-        xiaohongshu-saas/app/channels/xiaohongshu/adapter.py \
-        xiaohongshu-saas/app/schemas/__init__.py \
-        xiaohongshu-saas/scripts/seed_demo.py \
-        xiaohongshu-saas/app/scheduler/__init__.py \
-        xiaohongshu-saas/web/console/src/pages/Accounts.tsx \
-        xiaohongshu-saas/web/console/src/pages/Tasks.tsx \
-        xiaohongshu-saas/data/images/ \
-        xiaohongshu-saas/data/templates/demo.json \
-        docs/legacy/get-jobs-readme.md
-git commit -m "feat: 仓库根 README 装修 + scheduler 持久化 + 占位图 + 备份 Java README"
-git push origin main
 ```
+commit c494584 — fix(console): auto-start enabled services + mark pbp-api/lakehouse-api as disabled
+推送时间: 2026-07-06 09:23 UTC+8
+
+文件:
+  M scripts/console_gui.py                (+90 / -21)
+  M xiaohongshu-saas/app/api/auth.py      (Bin 17302 -> 8650 bytes)
+  M xiaohongshu-saas/app/api/billing.py   (Bin 8596 -> 4297 bytes)
+  M xiaohongshu-saas/app/api/tenants.py   (Bin 14848 -> 7423 bytes)
+  M xiaohongshu-saas/app/core/auth.py     (Bin 11598 -> 5798 bytes)
+  M xiaohongshu-saas/app/core/security.py (Bin 9854 -> 4927 bytes)
+```
+
+验证: `python scripts/console_gui.py` 跑通，console 自动启动 xhs-saas，`/status` JSON
+输出符合预期（xhs-saas enabled, pbp-api/lakehouse-api state=disabled）
