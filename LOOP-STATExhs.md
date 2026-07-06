@@ -1,7 +1,7 @@
 # LOOP-STATExhs.md
 
-Last updated: 2026-07-06 09:30 UTC+8
-Session: console 启动 bug 修复 + UTF-16 编码修复
+Last updated: 2026-07-06 10:50 UTC+8
+Session: 0.6.2 release — 修完所有待办 + 打新 MSI
 
 ## 架构摘要
 
@@ -142,16 +142,24 @@ Session: console 启动 bug 修复 + UTF-16 编码修复
 - **意义**: **这正是本次改造的核心收益之一**——以前 PyInstaller bootloader 静默吞错，用户只看到"灯是灰的"；现在 stderr 直接流进 launcher.log，用户能看懂下一步该做什么
 - **下次注意**: 装好 email-validator 后还要装 `pyproject.toml` 里列的其他 optional deps（python-jose、python-multipart 之类），用 `pip install -e ".[dev]"` 一把搞定
 
-### 剩余待办（仅本次 session）
+### 剩余待办（v0.6.2 之后）
 | 优先级 | 待办 | 状态 |
 |---|---|---|
-| P0 | console 自动启动 | ✅ main() 调 start_all() |
-| P0 | pbp-api / lakehouse-api 不再假装失败 | ✅ enabled=False，state=disabled |
+| P0 | console 自动启动 | ✅ main() 调 start_all() (c494584) |
+| P0 | pbp-api / lakehouse-api 不再假装失败 | ✅ enabled=True，从 backup 恢复源码 (b00019c) |
 | P0 | xhs-saas 真实错误能看见 | ✅ PyInstaller 不再吞 stderr |
-| P1 | xhs-saas 缺 email-validator | ❌ `pip install 'pydantic[email]'` |
-| P1 | pbp_api / lakehouse_api 源码拿回来 | ❌ 源码在私有仓库，需要先 `git pull` |
-| P2 | 重新打 console exe + MSI | ❌ 跑 `installer/build.ps1 -Version 0.6.2` |
-| P2 | 清理 `src/` untracked 残留 | ❌ 是 build 产物或工具生成，需要看 .gitignore |
+| P0 | xhs-saas 缺 email-validator | ✅ pyproject.toml 加 dep (692762e) |
+| P0 | xhs-saas NameError: Tenant | ✅ import 搬到 _seed_default_tenant 里 (692762e) |
+| P0 | xhs-saas NoForeignKeysError | ✅ 删 User.tenant / Tenant.users (692762e) |
+| P0 | v0.6.2 MSI | ✅ 159 MB, msiexec /a verify 通过 (fccd4b7) |
+| P1 | 重新打 console exe + MSI | ✅ done as part of fccd4b7 |
+| P1 | 清理 src/ untracked 残留 | ✅ .gitignore 加 src/ (b00019c) |
+| P1 | pbp_api / lakehouse_api 源码追踪 | ✅ .gitignore 改选择性忽略 data-lakehouse/ (b00019c) |
+| P2 | Release v0.6.2 到 GitHub | ❌ `installer/build.ps1 -Version 0.6.2 -Publish` 还需要 gh auth |
+| P2 | dev sqlite schema drift (tasks.tenant_id 列缺失) | ❌ alembic migration 没跑，或加 ALTER TABLE；不阻塞启动但 reload_all_tasks 会 throw |
+| P2 | pbp-api / lakehouse-api end-to-end 测试 | ❌ 没跑过完整 chain（api/v1/pbp → 8090）—— 我测试时 gateway 配的端口和我手动启动的不一致 |
+| P2 | candle CNDL1098 / CNDL1077 警告 | ❌ cosmetic；warning 不阻塞 build，但 product.wxs 可以小修 |
+| P2 | onefile exe 195 MB 单独 release | ❌ release 0.6.1 时附带的 onefile exe，0.6.2 没重新打（如需要按 c51aaf4 的 sibling asset 流程补打） |
 
 ## 测试命令
 
@@ -184,19 +192,56 @@ asyncio.run(go())
 "
 ```
 
-## 已推送的改动（最近一次 commit）
+## 已推送的改动（最近三次 commit）
 
 ```
-commit c494584 — fix(console): auto-start enabled services + mark pbp-api/lakehouse-api as disabled
-推送时间: 2026-07-06 09:23 UTC+8
+commit fccd4b7 - release: v0.6.2 MSI (159 MB)
+commit b00019c - feat(console): restore pbp-api + lakehouse-api from backup
+commit 692762e - fix(xhs-saas): email-validator dep + Tenant import + User.tenant schema
+推送时间: 2026-07-06 10:50 UTC+8
 
-文件:
-  M scripts/console_gui.py                (+90 / -21)
-  M xiaohongshu-saas/app/api/auth.py      (Bin 17302 -> 8650 bytes)
-  M xiaohongshu-saas/app/api/billing.py   (Bin 8596 -> 4297 bytes)
-  M xiaohongshu-saas/app/api/tenants.py   (Bin 14848 -> 7423 bytes)
-  M xiaohongshu-saas/app/core/auth.py     (Bin 11598 -> 5798 bytes)
-  M xiaohongshu-saas/app/core/security.py (Bin 9854 -> 4927 bytes)
+692762e (3 files):
+  M xiaohongshu-saas/pyproject.toml                            (+1 line)
+  M xiaohongshu-saas/app/db/session.py                         (+1 line)
+  M xiaohongshu-saas/app/models/orm.py                         (-2 lines, deleted bad relationships)
+
+b00019c (15 files):
+  A donor-screener-pbp/pbp_api/{__init__,dataset,main}.py     (3 files)
+  A donor-screener-pbp/pbp_api/routers/{__init__,candidates,health}.py (3 files)
+  A data-lakehouse/lakehouse_api/{__init__,client,main,seed}.py (4 files)
+  A data-lakehouse/lakehouse_api/routers/{__init__,analytics,health}.py (3 files)
+  M scripts/console_gui.py                                    (enabled pbp-api/lakehouse-api, dropped 暂未启用 labels)
+  M .gitignore                                                (surgical data-lakehouse/ patterns + add src/)
+
+fccd4b7 (2 files):
+  M dist/xhs-saas-console/xhs-saas-console.exe                (rebuilt via PyInstaller 6.x on Python 3.11)
+  A installer/output/xhs-saas-console-0.6.2.msi               (159 MB, msiexec /a verified)
+```
+
+## 验证记录
+
+```bash
+# 1. pip install (now includes email-validator)
+pip install -e ".[dev]"                  # email-validator 2.3.0 + 9 deps
+
+# 2. xhs-saas boots clean
+python -m uvicorn app.main:app --port 18770
+# -> "Application startup complete. Uvicorn running on http://127.0.0.1:18770"
+# -> POST /api/auth/signup returns {"user_id":1,"tenant_id":"smoke-tenant-a12c",...}
+
+# 3. pbp-api serves data
+python -m uvicorn pbp_api.main:app --port 18771
+# -> GET /healthz -> {"status":"ok","service":"pbp-api"}
+# -> GET /api/candidates -> 50 ranked molecules
+
+# 4. lakehouse-api boots
+python -m uvicorn lakehouse_api.main:app --port 18772
+# -> GET /healthz -> {"status":"ok","service":"lakehouse-api"}
+
+# 5. MSI verify
+msiexec /a installer/output/xhs-saas-console-0.6.2.msi
+# -> installed/xhs-saas-console/xhs-saas-console.exe present
+# -> installed/xhs-saas-console/xhs-saas-console.ico present
 ```
 
 验证: `python scripts/console_gui.py` 跑通，console 自动启动 xhs-saas，`/status` JSON
