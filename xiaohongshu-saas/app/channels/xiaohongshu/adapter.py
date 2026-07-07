@@ -33,7 +33,7 @@ _COOKIE_DIR = Path("data/cookies")
 _COOKIE_DIR.mkdir(parents=True, exist_ok=True)
 
 _LOGIN_URL = "https://creator.xiaohongshu.com/"
-_PUBLISH_URL = "https://creator.xiaohongshu.com/publish/publisher?source=official"
+_PUBLISH_URL = "https://creator.xiaohongshu.com/publish"
 
 
 class XiaohongshuAdapter(ChannelAdapter):
@@ -47,7 +47,7 @@ class XiaohongshuAdapter(ChannelAdapter):
 
     # ---------- lifecycle ----------
 
-    async def _browser(self) -> Browser:
+    async def _get_browser(self) -> Browser:
         if self._browser is None:
             self._pw = await async_playwright().start()
             launch_kwargs: dict = {"headless": True}
@@ -80,17 +80,26 @@ class XiaohongshuAdapter(ChannelAdapter):
     async def login(self, account: Account) -> None:
         """Open a (typically headed) browser, let the user scan the QR code,
         then persist cookies. After first login, subsequent calls reuse cookies."""
-        browser = await self._browser()
+        browser = await self._get_browser()
         context = await browser.new_context(viewport={"width": 1440, "height": 900})
         page = await context.new_page()
         await page.goto(_LOGIN_URL, wait_until="domcontentloaded")
-        # Wait up to 2 minutes for the user to scan the QR code.
+        # Wait up to 10 minutes for the user to scan the QR code.
         try:
-            await page.wait_for_url("**/creator.xiaohongshu.com/new/home**", timeout=120_000)
+            await page.wait_for_url("**/creator.xiaohongshu.com/new/home**", timeout=600_000)
         except Exception as exc:
             await page.close()
             await context.close()
             raise AccountError(f"login timeout: {exc}") from exc
+
+        # Give the SPA time to finish setting all session cookies (auth round-trips,
+        # customer-sso handshake, fingerprint cookies, etc.).
+        try:
+            await page.wait_for_load_state("networkidle", timeout=20_000)
+        except Exception:
+            pass
+        # And a small settle delay before capturing the cookie jar.
+        await asyncio.sleep(3)
 
         cookies = await context.cookies()
         cookie_path = self.cookie_path_for(account.id)
@@ -105,7 +114,7 @@ class XiaohongshuAdapter(ChannelAdapter):
     async def _load_context(self, account: Account) -> BrowserContext:
         if account.id in self._contexts:
             return self._contexts[account.id]
-        browser = await self._browser()
+        browser = await self._get_browser()
         cookie_path = Path(account.cookie_path) if account.cookie_path else self.cookie_path_for(account.id)
         if not cookie_path.exists():
             raise AccountError(f"no cookies for account {account.id}; call login() first")
@@ -151,10 +160,18 @@ class XiaohongshuAdapter(ChannelAdapter):
         await page.goto(_PUBLISH_URL, wait_until="domcontentloaded")
         await self._human_delay()
 
-        # Wait for creator center
+        # The SPA does an async auth check that may bounce us to /login then
+        # back to /new/home, then we need to click "发布图文笔记" to reach the
+        # actual publish form. Loop with a longer budget while the URL settles.
         try:
-            await page.wait_for_selector(Selectors.PUBLISH_TAB, timeout=15_000)
+            await self._navigate_to_publish_form(page, total_timeout=180_000)
         except Exception as exc:
+            try:
+                body = await page.content()
+                logger.error("publish form wait timeout. url={} title={}", page.url, await page.title())
+                logger.error("body bytes={} excerpt={}", len(body), body[:600])
+            except Exception:  # noqa: BLE001
+                pass
             raise PublishError(f"publisher page not ready: {exc}") from exc
 
         # 1) upload images (or video)
@@ -189,6 +206,59 @@ class XiaohongshuAdapter(ChannelAdapter):
             raw={"title": content.title},
         )
 
+    async def _navigate_to_publish_form(self, page: Page, total_timeout: int = 120_000) -> None:
+        """Bring the page to a state where the publish form is rendered and active.
+
+        The Xiaohongshu creator SPA does an async auth check that may bounce us
+        from /publish → /login → /new/home. We force the navigation ourselves
+        (the auto-redirect can take ~60s and is unreliable) and click into the
+        publisher via "发布图文笔记". Once on /publish/publish?target=image the
+        form renders with title/body/submit controls.
+        """
+        import asyncio as _asyncio
+        deadline = _asyncio.get_event_loop().time() + total_timeout / 1000.0
+        # If we land on /login or just /publish with no auth, force the
+        # creator-dashboard route to trigger the auth check ourselves.
+        for _ in range(8):
+            url = page.url
+            if "/login" in url:
+                logger.info("auth-check landing on /login; navigating to /new/home")
+                await page.goto("https://creator.xiaohongshu.com/new/home", wait_until="domcontentloaded")
+                await _asyncio.sleep(2)
+                break
+            await _asyncio.sleep(2)
+
+        last_url = page.url
+        while _asyncio.get_event_loop().time() < deadline:
+            url = page.url
+            # The publisher URL pattern we care about
+            if "/publish/publish" in url:
+                # Wait for the title input (more reliable than hidden file input)
+                try:
+                    await page.wait_for_selector(
+                        'input[placeholder^="填写标题"], input[placeholder*="标题"]',
+                        state="visible", timeout=10_000,
+                    )
+                    logger.info("publish form ready at {}", url)
+                    return
+                except Exception:
+                    pass
+            # On dashboard, click the publish note button
+            try:
+                btn = page.locator("text=发布图文笔记").first
+                if await btn.count() > 0 and await btn.is_visible():
+                    logger.info("clicking 发布图文笔记 from {}", url)
+                    await btn.click(timeout=5_000)
+                    await _asyncio.sleep(3)
+                    continue
+            except Exception:
+                pass
+            if url != last_url:
+                logger.info("page navigated {} -> {}", last_url, url)
+                last_url = url
+            await _asyncio.sleep(1.0)
+        raise TimeoutError(f"publish form did not appear within {total_timeout}ms; last url={page.url}")
+
     async def _upload_images(self, page: Page, images: list[str]) -> None:
         # The file input is hidden but always present in the DOM.
         file_input = page.locator(Selectors.FILE_INPUT).first
@@ -214,9 +284,22 @@ class XiaohongshuAdapter(ChannelAdapter):
             await loc.type(body[i : i + chunk_size], delay=random.randint(20, 60))
 
     async def _add_topic(self, page: Page, topic: str) -> None:
-        loc = page.locator(Selectors.TOPIC_INPUT)
-        await loc.fill(topic)
-        await loc.press("Enter")
+        # Topic input is optional; if not present in this UI variant, skip silently.
+        if not getattr(self, "_topics_enabled", True):
+            return
+        try:
+            loc = page.locator(Selectors.TOPIC_INPUT)
+            if await loc.count() == 0:
+                logger.info("topic input not present; skipping topic {}", topic)
+                # Fall back: append topic to body or disable for the run
+                self._topics_enabled = False
+                return
+            await loc.fill(topic)
+            await loc.press("Enter")
+            await self._human_delay(300, 900)
+        except Exception as exc:
+            logger.warning("failed to add topic {}: {}", topic, exc)
+            self._topics_enabled = False
 
     # ---------- heartbeat ----------
 

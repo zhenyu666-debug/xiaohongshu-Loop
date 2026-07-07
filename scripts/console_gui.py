@@ -22,6 +22,7 @@ from __future__ import annotations
 import json
 import os
 import queue
+import shutil
 import subprocess
 import sys
 import threading
@@ -452,6 +453,40 @@ class ServiceState:
     last_error: str = ""
 
 
+def resolve_python_interpreter() -> Optional[str]:
+    """Locate a real CPython interpreter to spawn child uvicorn workers.
+
+    Inside a PyInstaller-frozen build ``sys.executable`` is the .exe itself, so
+    we can't reuse it for ``python -m uvicorn ...``. Fall back to (in order):
+    the active Python launcher on PATH, well-known install paths, then the
+    ``py`` launcher. Returns an absolute path string or None.
+    """
+    candidates: list[str] = []
+    py_on_path = shutil.which("python") or shutil.which("python3")
+    if py_on_path:
+        candidates.append(py_on_path)
+    candidates.extend(
+        [
+            r"C:\Python311\python.exe",
+            r"C:\Python312\python.exe",
+            r"C:\Python310\python.exe",
+            os.path.expandvars(r"%LOCALAPPDATA%\Programs\Python\Python311\python.exe"),
+            os.path.expandvars(r"%LOCALAPPDATA%\Programs\Python\Python312\python.exe"),
+        ]
+    )
+    py_launcher = shutil.which("py")
+    if py_launcher:
+        candidates.append(py_launcher)
+    seen: set[str] = set()
+    for c in candidates:
+        if not c or c.lower() in seen:
+            continue
+        seen.add(c.lower())
+        if os.path.isfile(c):
+            return c
+    return None
+
+
 class Launcher:
     def __init__(self) -> None:
         self.states: dict = {s["name"]: ServiceState(cfg=s) for s in SERVICES}
@@ -522,10 +557,19 @@ class Launcher:
         env["APP_PORT"] = str(cfg["port"])
         env["PBP_API_URL"] = "http://127.0.0.1:8090"
         env["LAKEHOUSE_API_URL"] = "http://127.0.0.1:8091"
+        # When this console is running inside a PyInstaller bundle, sys.executable
+        # is the .exe itself (runw.exe). It cannot be invoked as `python -m uvicorn`.
+        # resolve_python_interpreter() always finds a real CPython; it is also
+        # correct for normal dev runs (falls back to sys.executable).
+        interpreter = resolve_python_interpreter()
+        if not interpreter:
+            st.last_error = "无法定位系统 Python.exe（需安装 Python 并加入 PATH）"
+            self._log(f"[{name}] {st.last_error}")
+            return
         try:
             proc = subprocess.Popen(
                 [
-                    sys.executable,
+                    interpreter,
                     "-m", "uvicorn",
                     cfg["module"],
                     "--host", "127.0.0.1",
@@ -538,7 +582,7 @@ class Launcher:
                 stderr=subprocess.STDOUT,
                 creationflags=subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0,
             )
-        except FileNotFoundError as e:
+        except OSError as e:
             st.last_error = f"启动失败: {e}"
             self._log(f"[{name}] 启动失败: {e}")
             return

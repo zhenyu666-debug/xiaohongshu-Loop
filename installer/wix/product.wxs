@@ -158,11 +158,21 @@
 
     <InstallExecuteSequence>
       <Custom Action="CleanupRuntimeCache" After="RemoveFiles">NOT REMOVE=&quot;ALL&quot;</Custom>
+      <Custom Action="SetArpInstallLocation" After="InstallFiles"><![CDATA[NOT REMOVE="ALL"]]></Custom>
+      <Custom Action="SetExitDialogText" After="InstallFiles"><![CDATA[NOT REMOVE="ALL"]]></Custom>
     </InstallExecuteSequence>
     <CustomAction Id="CleanupRuntimeCache"
                   Directory="AppRuntime"
                   ExeCommand="cmd.exe /c if exist &quot;[AppRuntime]runtime&quot; rmdir /s /q &quot;[AppRuntime]runtime&quot;"
                   Return="ignore" />
+    <!-- Type 51: resolve [INSTALLDIR] references into real strings at install time.
+         Avoids candle warnings CNDL1077 about static property refs. -->
+    <CustomAction Id="SetArpInstallLocation"
+                  Property="ARPINSTALLLOCATION"
+                  Value="[INSTALLDIR]" />
+    <CustomAction Id="SetExitDialogText"
+                  Property="WIXUI_EXITDIALOGOPTIONALTEXT"
+                  Value="The xiaohongshu-Loop Console has been installed at [INSTALLDIR] and a shortcut is on your desktop." />
 
     <!-- WixUI_InstallDir adds: Welcome -> License (skipped, no RTF) -> InstallDir -> Install -> Finish.
          The InstallDir dialog exposes the customizable folder. -->
@@ -185,13 +195,16 @@
                Event="NewDialog"
                Value="VerifyReadyDlg"
                Order="2">1</Publish>
-      <Property Id="WIXUI_EXITDIALOGOPTIONALTEXT"
-                Value="The xiaohongshu-Loop Console has been installed at [INSTALLDIR] and a shortcut is on your desktop." />
+      <!-- WIXUI_EXITDIALOGOPTIONALTEXT is set at runtime via a Type 51
+           CustomAction (see SetExitDialogText below) to avoid CNDL1077,
+           since candle cannot resolve [INSTALLDIR] inside a static Property. -->
     </UI>
 
     <Property Id="ARPHELPLINK"
               Value="https://github.com/zhenyu666-debug/xiaohongshu-Loop/issues" />
-    <Property Id="ARPINSTALLLOCATION" Value="[INSTALLDIR]" />
+    <!-- ARPINSTALLLOCATION is set at runtime by SetArpInstallLocation
+         CustomAction (see below) to avoid CNDL1077 from a static [INSTALLDIR]
+         reference; the directory is guaranteed to exist by InstallFiles. -->
     <Property Id="ARPSIZE" Value="200000" />
     <Property Id="ARPURLINFOABOUT" Value="https://github.com/zhenyu666-debug/xiaohongshu-Loop" />
     <Property Id="ARPCONTACT" Value="zhenyu666-debug" />

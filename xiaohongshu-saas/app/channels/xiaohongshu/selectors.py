@@ -7,7 +7,9 @@ from __future__ import annotations
 
 
 class Selectors:
-    PUBLISH_TAB = "text=上传图文"
+    # The actual publisher shows at /publish/publish?target=image after we click
+    # "发布图文笔记" on the dashboard. The title field is the most reliable marker.
+    PUBLISH_TAB = 'input[placeholder^="填写标题"], input[placeholder*="标题"]'
     FILE_INPUT = "input[type=file][accept^='image']"
     VIDEO_FILE_INPUT = "input[type=file][accept^='video']"
     UPLOAD_PROGRESS_DONE = ".upload-progress[aria-valuenow='100'], .upload-done, text=上传完成"
