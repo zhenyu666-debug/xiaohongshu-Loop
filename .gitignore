@@ -13,6 +13,16 @@ target/
 # modules (shared, liepin, zhilian, qcc) are still wired through Gradle but the
 # project has fully migrated to xiaohongshu-saas/. Keep src/ ignored.
 src/
+# Reference mirrors under memory/references/ may carry their own src/ trees;
+# un-ignore those explicitly so the mirror isn't silently truncated.
+# NOTE: PNG/PDF/etc. stay ignored — the mirror is text-only by design, to keep
+# repo size small. If you really need to track a binary, add `git add -f` per-file.
+!memory/references/**/src/
+!memory/references/**/bin/
+!memory/references/**/lib/
+!memory/references/**/scripts/
+!memory/references/**/data/
+!memory/references/**/.github/
 *.class
 *.jar
 *.war
