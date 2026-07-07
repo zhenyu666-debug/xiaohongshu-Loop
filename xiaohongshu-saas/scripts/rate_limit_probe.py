@@ -69,7 +69,7 @@ async def emit_sse_event(event_type: str, data: dict) -> None:
 
 def print_status(rung: int, interval: int, attempt: int, outcome: str, latency: float) -> None:
     bar = "\u2588" * min(attempt, 10)
-    print(f"  [R{rung} {interval:2d}m] attempt {attempt}: {outcome:<14s} {bar}  {latency:,.0f} ms")
+    print(f"  [R{rung} {interval:2d}m] attempt {attempt}: {outcome:<14s} {bar}  {latency:,.0f} ms", flush=True)
 
 
 sys.path.insert(0, str(REPO_ROOT / "xiaohongshu-saas"))

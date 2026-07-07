@@ -157,7 +157,10 @@ class XiaohongshuAdapter(ChannelAdapter):
             return PublishResult(success=False, error=str(exc))
 
     async def _do_publish(self, page: Page, content: ContentItem) -> PublishResult:
-        await page.goto(_PUBLISH_URL, wait_until="domcontentloaded")
+        # /publish directly bounces to /login (cookie not yet proven), so go to
+        # the creator dashboard first; once we're on /new/home, click the
+        # "发布图文笔记" tile to land on the real /publish/publish page.
+        await page.goto("https://creator.xiaohongshu.com/new/home", wait_until="domcontentloaded")
         await self._human_delay()
 
         # The SPA does an async auth check that may bounce us to /login then
