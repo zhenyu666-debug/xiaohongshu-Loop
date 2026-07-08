@@ -103,6 +103,7 @@ data-lakehouse/dl.cs
 qcc_scraper*
 check_*.py
 _check_*.py
+_inspect_*.py
 _debug_*.py
 _debug_*.html
 _diagnose*.py

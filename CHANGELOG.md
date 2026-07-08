@@ -10,8 +10,35 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 - `CHANGELOG.md` is now stored as UTF-8 (was UTF-16 LE with BOM up through `d629806`), so `git diff` shows proper text patches instead of "Binary files differ".
   `CHANGELOG.md` 现在以 UTF-8 存储（`d629806` 之前为 UTF-16 LE 带 BOM），`git diff` 将显示文本补丁而非「Binary files differ」。
+
+### Notes
 - Added `xhs-saas-console.exe` (onefile, 195 MB) as a sibling asset to the v0.6.1 release, alongside the 159 MB MSI; users who prefer direct-run have a smaller bootstrap.
   v0.6.1 release 新增 `xhs-saas-console.exe`（onefile，195 MB）作为补充下载，与 159 MB MSI 并列，供偏好直接运行的用户使用更小的引导文件。
+
+## [0.6.4] - 2026-07-07
+### Fixed
+- XHS publish flow now routes through `/new/home` and clicks `发布图文笔记` before navigating to the publish form, matching the actual creator portal SPA flow.
+  XHS 发布流改为先经过 `/new/home` 点击「发布图文笔记」再跳转到发布表单，对齐实际创作者中心的 SPA 行为。
+- `scripts/rate_limit_probe.py` refactored: `OUT_DIR` resolved from repo root, correct middle-dot task name, async `load_account_and_task`, and `_Acct` stand-in for adapter.publish calls.
+  `scripts/rate_limit_probe.py` 重构：`OUT_DIR` 从仓库根解析、修正任务名中的中点、async `load_account_and_task`、`_Acct` 替身适配器调用。
+
+### Notes
+- DOM inspector (`xiaohongshu-saas/scripts/_inspect_publish_dom.py`) confirms the publish page only exposes one editable element after click (`<input type="file" class="upload-input">`); the publish adapter still needs to be updated to wait on `input.upload-input` instead of the previous combined selector.
+  DOM 探针（`xiaohongshu-saas/scripts/_inspect_publish_dom.py`）确认发布页点击后只暴露一个可编辑元素（`<input type="file" class="upload-input">`）；发布适配器仍需改为等待 `input.upload-input` 而非之前的组合选择器。
+
+## [0.6.3] - 2026-07-06
+### Fixed
+- Console supervisor loop NameError: `cfg_enabled(svc)` -> `svc.get("enabled", True)` so `_supervise` (line 585) and the card-state read stay in sync.
+  控制台监督循环 NameError：将 `cfg_enabled(svc)` 改为 `svc.get("enabled", True)`，让 `_supervise`（第 585 行）与卡片状态读取保持一致。
+
+## [0.6.2] - 2026-07-06
+### Fixed
+- Fresh installs no longer crash on first import: added missing `email-validator==2.3.0` runtime dep; fixed `NameError: Tenant` in `_seed_default_tenant`; removed broken `User.tenant` many-to-many declared with `secondary=`.
+  新装环境不再首次 import 崩溃：补齐缺失的运行时依赖 `email-validator==2.3.0`；修复 `_seed_default_tenant` 里的 `NameError: Tenant`；移除错误的 `User.tenant` 多对多（带 `secondary=`）。
+- pbp-api and lakehouse-api are both enabled and serving data; previously the console showed their cards as gray "未启用" placeholders because the source files were missing from the working tree.
+  pbp-api 与 lakehouse-api 均已启用并提供数据；之前控制台显示为灰色「未启用」占位符，原因是工作树缺失源码。
+- Console `main()` now auto-calls `start_all()` so the WebView opens with services already starting, not waiting on a button click.
+  控制台 `main()` 现在自动调用 `start_all()`，WebView 打开时服务已在启动，无需再点按钮。
 
 ## [0.6.1] - 2026-07-06
 ### Changed
@@ -114,7 +141,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - xiaohongshu-saas/ directory structure
 - FastAPI template-only console
 
-[Unreleased]: https://github.com/zhenyu666-debug/xiaohongshu-Loop/compare/v0.6.0...HEAD
+[Unreleased]: https://github.com/zhenyu666-debug/xiaohongshu-Loop/compare/v0.6.4...HEAD
+[0.6.4]: https://github.com/zhenyu666-debug/xiaohongshu-Loop/compare/v0.6.3...v0.6.4
+[0.6.3]: https://github.com/zhenyu666-debug/xiaohongshu-Loop/compare/v0.6.2...v0.6.3
+[0.6.2]: https://github.com/zhenyu666-debug/xiaohongshu-Loop/compare/v0.6.1...v0.6.2
+[0.6.1]: https://github.com/zhenyu666-debug/xiaohongshu-Loop/compare/v0.6.0...v0.6.1
 [0.6.0]: https://github.com/zhenyu666-debug/xiaohongshu-Loop/compare/v0.5.3...v0.6.0
 [0.5.3]: https://github.com/zhenyu666-debug/xiaohongshu-Loop/compare/v0.5.2...v0.5.3
 [0.5.2]: https://github.com/zhenyu666-debug/xiaohongshu-Loop/compare/v0.5.1...v0.5.2
