@@ -1,0 +1,69 @@
+# Multi-stage build for xhs-saas backend
+FROM python:3.11-slim AS builder
+
+WORKDIR /build
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    build-essential gcc \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY pyproject.toml ./
+COPY app ./app
+COPY alembic ./alembic
+COPY alembic.ini ./
+COPY scripts ./scripts
+
+RUN pip install --no-cache-dir --upgrade pip && \
+    pip install --no-cache-dir .[ai] && \
+    pip wheel --no-cache-dir --wheel-dir=/wheels .[ai]
+
+
+FROM python:3.11-slim AS runtime
+
+LABEL org.opencontainers.image.title="xhs-saas-backend"
+LABEL org.opencontainers.image.description="Xiaohongshu SaaS with AI Agent platform"
+LABEL org.opencontainers.image.source="https://github.com/langchain-ai/openwiki"
+LABEL org.opencontainers.image.licenses="MIT"
+
+# Install runtime dependencies
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    curl tini libpq5 \
+    && rm -rf /var/lib/apt/lists/*
+
+# Create non-root user
+RUN groupadd -r -g 1000 xhs && \
+    useradd -r -u 1000 -g xhs -d /app -s /sbin/nologin xhs
+
+WORKDIR /app
+
+# Copy wheels and install
+COPY --from=builder /wheels /wheels
+RUN pip install --no-cache-dir --no-index --find-links=/wheels xhs-saas[ai] && \
+    rm -rf /wheels
+
+# Install Playwright browsers
+RUN playwright install --with-deps chromium
+
+# Copy application code
+COPY --chown=xhs:xhs app ./app
+COPY --chown=xhs:xhs alembic ./alembic
+COPY --chown=xhs:xhs alembic.ini ./
+COPY --chown=xhs:xhs scripts ./scripts
+
+# Create data directories
+RUN mkdir -p /app/data/cookies /app/data/embeddings /app/logs /tmp && \
+    chown -R xhs:xhs /app
+
+USER xhs
+
+ENV PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1 \
+    PATH="/home/xhs/.local/bin:${PATH}"
+
+EXPOSE 8000
+
+HEALTHCHECK --interval=30s --timeout=5s --start-period=30s --retries=3 \
+    CMD curl -fsS http://localhost:8000/health || exit 1
+
+ENTRYPOINT ["/usr/bin/tini", "--"]
+CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "2"]

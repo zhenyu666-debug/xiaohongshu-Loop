@@ -1,0 +1,113 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: xhs-postgres
+  namespace: xhs-saas
+  labels:
+    app: xhs-postgres
+spec:
+  type: ClusterIP
+  ports:
+    - name: postgres
+      port: 5432
+      targetPort: 5432
+  selector:
+    app: xhs-postgres
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: xhs-postgres
+  namespace: xhs-saas
+  labels:
+    app: xhs-postgres
+spec:
+  serviceName: xhs-postgres
+  replicas: 1
+  selector:
+    matchLabels:
+      app: xhs-postgres
+  template:
+    metadata:
+      labels:
+        app: xhs-postgres
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 999
+        fsGroup: 999
+      initContainers:
+        - name: init-db
+          image: postgres:16-alpine
+          command:
+            - sh
+            - -c
+            - |
+              chown -R postgres:postgres /var/lib/postgresql/data
+              chmod 700 /var/lib/postgresql/data
+          volumeMounts:
+            - name: data
+              mountPath: /var/lib/postgresql/data
+          securityContext:
+            runAsUser: 0
+      containers:
+        - name: postgres
+          image: postgres:16-alpine
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: postgres
+              containerPort: 5432
+          env:
+            - name: POSTGRES_DB
+              value: xhs
+            - name: POSTGRES_USER
+              value: xhs
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: xhs-saas-secrets
+                  key: POSTGRES_PASSWORD
+            - name: PGDATA
+              value: /var/lib/postgresql/data/pgdata
+          resources:
+            requests:
+              cpu: "200m"
+              memory: "512Mi"
+            limits:
+              cpu: "1000m"
+              memory: "2Gi"
+          livenessProbe:
+            exec:
+              command: ["pg_isready", "-U", "xhs", "-d", "xhs"]
+            initialDelaySeconds: 30
+            periodSeconds: 10
+          readinessProbe:
+            exec:
+              command: ["pg_isready", "-U", "xhs", "-d", "xhs"]
+            initialDelaySeconds: 5
+            periodSeconds: 5
+          securityContext:
+            allowPrivilegeEscalation: false
+            runAsNonRoot: true
+            runAsUser: 999
+            capabilities:
+              drop: ["ALL"]
+          volumeMounts:
+            - name: data
+              mountPath: /var/lib/postgresql/data
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: xhs-postgres-data
+  volumeClaimTemplates: []
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: xhs-postgres-data
+  namespace: xhs-saas
+spec:
+  accessModes: ["ReadWriteOnce"]
+  resources:
+    requests:
+      storage: 20Gi

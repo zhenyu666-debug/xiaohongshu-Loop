@@ -1,0 +1,327 @@
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: xhs-cookie-refresh
+  namespace: xhs-saas
+  labels:
+    app: xhs-saas
+    job-type: cookie-refresh
+spec:
+  schedule: "0 */6 * * *"
+  timeZone: "Asia/Shanghai"
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  startingDeadlineSeconds: 600
+  jobTemplate:
+    spec:
+      backoffLimit: 2
+      activeDeadlineSeconds: 1800
+      template:
+        metadata:
+          labels:
+            app: xhs-saas
+            job-type: cookie-refresh
+        spec:
+          serviceAccountName: xhs-saas
+          restartPolicy: OnFailure
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 1000
+            fsGroup: 1000
+          containers:
+            - name: cookie-refresh
+              image: xhs-saas/backend:latest
+              imagePullPolicy: IfNotPresent
+              command: ["python", "-m", "app.scheduler.jobs.cookie_refresh"]
+              envFrom:
+                - configMapRef:
+                    name: xhs-saas-config
+                - secretRef:
+                    name: xhs-saas-secrets
+              resources:
+                requests:
+                  cpu: "200m"
+                  memory: "512Mi"
+                limits:
+                  cpu: "1000m"
+                  memory: "2Gi"
+              securityContext:
+                allowPrivilegeEscalation: false
+                runAsNonRoot: true
+                runAsUser: 1000
+                capabilities:
+                  drop: ["ALL"]
+              volumeMounts:
+                - name: cookies
+                  mountPath: /app/data/cookies
+          volumes:
+            - name: cookies
+              persistentVolumeClaim:
+                claimName: xhs-saas-cookies
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: xhs-content-publish
+  namespace: xhs-saas
+  labels:
+    app: xhs-saas
+    job-type: scheduled-publish
+spec:
+  schedule: "*/15 * * * *"
+  timeZone: "Asia/Shanghai"
+  concurrencyPolicy: Allow
+  successfulJobsHistoryLimit: 2
+  failedJobsHistoryLimit: 3
+  startingDeadlineSeconds: 600
+  jobTemplate:
+    spec:
+      backoffLimit: 2
+      activeDeadlineSeconds: 3600
+      template:
+        metadata:
+          labels:
+            app: xhs-saas
+            job-type: scheduled-publish
+        spec:
+          serviceAccountName: xhs-saas
+          restartPolicy: OnFailure
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 1000
+            fsGroup: 1000
+          containers:
+            - name: publish-runner
+              image: xhs-saas/backend:latest
+              imagePullPolicy: IfNotPresent
+              command: ["python", "-m", "app.scheduler.jobs.run_scheduled"]
+              envFrom:
+                - configMapRef:
+                    name: xhs-saas-config
+                - secretRef:
+                    name: xhs-saas-secrets
+              resources:
+                requests:
+                  cpu: "300m"
+                  memory: "768Mi"
+                limits:
+                  cpu: "1500m"
+                  memory: "3Gi"
+              securityContext:
+                allowPrivilegeEscalation: false
+                runAsNonRoot: true
+                runAsUser: 1000
+                capabilities:
+                  drop: ["ALL"]
+              volumeMounts:
+                - name: cookies
+                  mountPath: /app/data/cookies
+                - name: data
+                  mountPath: /app/data
+          volumes:
+            - name: cookies
+              persistentVolumeClaim:
+                claimName: xhs-saas-cookies
+            - name: data
+              persistentVolumeClaim:
+                claimName: xhs-saas-data
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: xhs-cleanup-stale
+  namespace: xhs-saas
+  labels:
+    app: xhs-saas
+    job-type: cleanup
+spec:
+  schedule: "0 3 * * *"
+  timeZone: "Asia/Shanghai"
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 2
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      backoffLimit: 1
+      activeDeadlineSeconds: 1800
+      template:
+        metadata:
+          labels:
+            app: xhs-saas
+            job-type: cleanup
+        spec:
+          serviceAccountName: xhs-saas
+          restartPolicy: OnFailure
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 1000
+          containers:
+            - name: cleanup
+              image: xhs-saas/backend:latest
+              imagePullPolicy: IfNotPresent
+              command: ["python", "-m", "app.scheduler.jobs.cleanup"]
+              envFrom:
+                - configMapRef:
+                    name: xhs-saas-config
+                - secretRef:
+                    name: xhs-saas-secrets
+              resources:
+                requests:
+                  cpu: "100m"
+                  memory: "256Mi"
+                limits:
+                  cpu: "500m"
+                  memory: "512Mi"
+              securityContext:
+                allowPrivilegeEscalation: false
+                runAsNonRoot: true
+                runAsUser: 1000
+                capabilities:
+                  drop: ["ALL"]
+              volumeMounts:
+                - name: data
+                  mountPath: /app/data
+                - name: logs
+                  mountPath: /app/logs
+          volumes:
+            - name: data
+              persistentVolumeClaim:
+                claimName: xhs-saas-data
+            - name: logs
+              persistentVolumeClaim:
+                claimName: xhs-saas-logs
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: xhs-metrics-rollup
+  namespace: xhs-saas
+  labels:
+    app: xhs-saas
+    job-type: metrics
+spec:
+  schedule: "0 */1 * * *"
+  timeZone: "Asia/Shanghai"
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 1
+  failedJobsHistoryLimit: 2
+  jobTemplate:
+    spec:
+      backoffLimit: 1
+      activeDeadlineSeconds: 600
+      template:
+        metadata:
+          labels:
+            app: xhs-saas
+            job-type: metrics
+        spec:
+          serviceAccountName: xhs-saas
+          restartPolicy: OnFailure
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 1000
+          containers:
+            - name: metrics
+              image: xhs-saas/backend:latest
+              imagePullPolicy: IfNotPresent
+              command: ["python", "-m", "app.scheduler.jobs.metrics_rollup"]
+              envFrom:
+                - configMapRef:
+                    name: xhs-saas-config
+                - secretRef:
+                    name: xhs-saas-secrets
+              resources:
+                requests:
+                  cpu: "100m"
+                  memory: "256Mi"
+                limits:
+                  cpu: "300m"
+                  memory: "512Mi"
+              securityContext:
+                allowPrivilegeEscalation: false
+                runAsNonRoot: true
+                runAsUser: 1000
+                capabilities:
+                  drop: ["ALL"]
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: xhs-db-backup
+  namespace: xhs-saas
+  labels:
+    app: xhs-saas
+    job-type: backup
+spec:
+  schedule: "0 2 * * *"
+  timeZone: "Asia/Shanghai"
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      backoffLimit: 2
+      activeDeadlineSeconds: 3600
+      template:
+        metadata:
+          labels:
+            app: xhs-saas
+            job-type: backup
+        spec:
+          serviceAccountName: xhs-saas
+          restartPolicy: OnFailure
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 1000
+          containers:
+            - name: backup
+              image: postgres:16-alpine
+              imagePullPolicy: IfNotPresent
+              command:
+                - sh
+                - -c
+                - |
+                  set -e
+                  TIMESTAMP=$(date +%Y%m%d-%H%M%S)
+                  PGPASSWORD=$(cat /secrets/postgres-password) pg_dump -h xhs-postgres -U xhs -d xhs \
+                    --no-owner --clean --if-exists \
+                    | gzip > /backup/xhs-backup-${TIMESTAMP}.sql.gz
+                  find /backup -name 'xhs-backup-*.sql.gz' -mtime +7 -delete
+              env:
+                - name: PGPASSWORD
+                  valueFrom:
+                    secretKeyRef:
+                      name: xhs-saas-secrets
+                      key: POSTGRES_PASSWORD
+              resources:
+                requests:
+                  cpu: "200m"
+                  memory: "512Mi"
+                limits:
+                  cpu: "500m"
+                  memory: "1Gi"
+              securityContext:
+                allowPrivilegeEscalation: false
+                runAsNonRoot: true
+                runAsUser: 1000
+                capabilities:
+                  drop: ["ALL"]
+              volumeMounts:
+                - name: backup
+                  mountPath: /backup
+          volumes:
+            - name: backup
+              persistentVolumeClaim:
+                claimName: xhs-saas-backup
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: xhs-saas-backup
+  namespace: xhs-saas
+spec:
+  accessModes: ["ReadWriteOnce"]
+  resources:
+    requests:
+      storage: 20Gi

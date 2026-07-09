@@ -39,6 +39,11 @@ dev = [
 ]
 ai = [
     "openai>=1.30",
+    "anthropic>=0.20",
+    "chromadb>=0.4",
+    "numpy>=1.24",
+    "pypdf>=4.0",
+    "tiktoken>=0.5",
 ]
 monitoring = [
     "prometheus-client>=0.20",

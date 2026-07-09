@@ -1,0 +1,64 @@
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: xhs-backend
+  namespace: xhs-saas
+  labels:
+    app: xhs-backend
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app: xhs-backend
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: xhs-frontend
+  namespace: xhs-saas
+  labels:
+    app: xhs-frontend
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app: xhs-frontend
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: xhs-celery-worker
+  namespace: xhs-saas
+  labels:
+    app: xhs-celery-worker
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app: xhs-celery-worker
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: xhs-worker
+  namespace: xhs-saas
+  labels:
+    app: xhs-worker
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app: xhs-worker
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: xhs-celery-beat
+  namespace: xhs-saas
+  labels:
+    app: xhs-celery-beat
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app: xhs-celery-beat

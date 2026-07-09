@@ -1,0 +1,210 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: xhs-worker
+  namespace: xhs-saas
+  labels:
+    app: xhs-worker
+    tier: worker
+    component: scheduler
+spec:
+  replicas: 1
+  revisionHistoryLimit: 3
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: xhs-worker
+  template:
+    metadata:
+      labels:
+        app: xhs-worker
+        tier: worker
+        component: scheduler
+    spec:
+      serviceAccountName: xhs-saas
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        fsGroup: 1000
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: worker
+          image: xhs-saas/backend:latest
+          imagePullPolicy: IfNotPresent
+          command: ["python", "-m", "app.scheduler.runner"]
+          envFrom:
+            - configMapRef:
+                name: xhs-saas-config
+            - configMapRef:
+                name: xhs-saas-celery
+            - secretRef:
+                name: xhs-saas-secrets
+          resources:
+            requests:
+              cpu: "200m"
+              memory: "512Mi"
+            limits:
+              cpu: "1000m"
+              memory: "2Gi"
+          livenessProbe:
+            exec:
+              command: ["python", "-c", "import sys; sys.exit(0)"]
+            initialDelaySeconds: 30
+            periodSeconds: 30
+            timeoutSeconds: 5
+            failureThreshold: 3
+          securityContext:
+            allowPrivilegeEscalation: false
+            runAsNonRoot: true
+            runAsUser: 1000
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          volumeMounts:
+            - name: data
+              mountPath: /app/data
+            - name: cookies
+              mountPath: /app/data/cookies
+            - name: logs
+              mountPath: /app/logs
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: xhs-saas-data
+        - name: cookies
+          persistentVolumeClaim:
+            claimName: xhs-saas-cookies
+        - name: logs
+          persistentVolumeClaim:
+            claimName: xhs-saas-logs
+        - name: tmp
+          emptyDir: {}
+---
+# Celery beat for periodic tasks
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: xhs-celery-beat
+  namespace: xhs-saas
+  labels:
+    app: xhs-celery-beat
+    tier: worker
+    component: scheduler
+spec:
+  replicas: 1
+  revisionHistoryLimit: 3
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: xhs-celery-beat
+  template:
+    metadata:
+      labels:
+        app: xhs-celery-beat
+        tier: worker
+    spec:
+      serviceAccountName: xhs-saas
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        fsGroup: 1000
+      containers:
+        - name: celery-beat
+          image: xhs-saas/backend:latest
+          imagePullPolicy: IfNotPresent
+          command: ["celery", "-A", "app.scheduler.celery_app", "beat", "--loglevel=info"]
+          envFrom:
+            - configMapRef:
+                name: xhs-saas-config
+            - configMapRef:
+                name: xhs-saas-celery
+            - secretRef:
+                name: xhs-saas-secrets
+          resources:
+            requests:
+              cpu: "50m"
+              memory: "128Mi"
+            limits:
+              cpu: "200m"
+              memory: "256Mi"
+          securityContext:
+            allowPrivilegeEscalation: false
+            runAsNonRoot: true
+            runAsUser: 1000
+            capabilities:
+              drop: ["ALL"]
+---
+# Celery worker for distributed task execution
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: xhs-celery-worker
+  namespace: xhs-saas
+  labels:
+    app: xhs-celery-worker
+    tier: worker
+    component: scheduler
+spec:
+  replicas: 2
+  revisionHistoryLimit: 3
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  selector:
+    matchLabels:
+      app: xhs-celery-worker
+  template:
+    metadata:
+      labels:
+        app: xhs-celery-worker
+        tier: worker
+    spec:
+      serviceAccountName: xhs-saas
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        fsGroup: 1000
+      containers:
+        - name: celery-worker
+          image: xhs-saas/backend:latest
+          imagePullPolicy: IfNotPresent
+          command: ["celery", "-A", "app.scheduler.celery_app", "worker", "--loglevel=info", "--concurrency=2"]
+          envFrom:
+            - configMapRef:
+                name: xhs-saas-config
+            - configMapRef:
+                name: xhs-saas-celery
+            - secretRef:
+                name: xhs-saas-secrets
+          resources:
+            requests:
+              cpu: "200m"
+              memory: "512Mi"
+            limits:
+              cpu: "1000m"
+              memory: "2Gi"
+          securityContext:
+            allowPrivilegeEscalation: false
+            runAsNonRoot: true
+            runAsUser: 1000
+            capabilities:
+              drop: ["ALL"]
+          volumeMounts:
+            - name: data
+              mountPath: /app/data
+            - name: cookies
+              mountPath: /app/data/cookies
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: xhs-saas-data
+        - name: cookies
+          persistentVolumeClaim:
+            claimName: xhs-saas-cookies

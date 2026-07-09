@@ -1,0 +1,27 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: xhs-saas
+
+resources:
+  - 00-namespace.yaml
+  - 01-rbac.yaml
+  - 02-configmap.yaml
+  - 03-secrets.yaml
+  - 04-pvc.yaml
+  - 10-backend-deployment.yaml
+  - 11-frontend-deployment.yaml
+  - 12-worker-deployment.yaml
+  - 20-services.yaml
+  - 30-ingress.yaml
+  - 40-hpa.yaml
+  - 50-pdb.yaml
+  - 60-redis.yaml
+  - 61-postgres.yaml
+  - 70-networkpolicy.yaml
+  - ../jobs/cronjobs.yaml
+
+commonLabels:
+  app.kubernetes.io/name: xhs-saas
+  app.kubernetes.io/managed-by: kustomize
+  app.kubernetes.io/part-of: xhs-saas

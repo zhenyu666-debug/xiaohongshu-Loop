@@ -1,0 +1,37 @@
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: xhs-saas
+  namespace: xhs-saas
+  labels:
+    app: xhs-saas
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: xhs-saas-leader-election
+  namespace: xhs-saas
+rules:
+  - apiGroups: [""]
+    resources: ["configmaps", "leases"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+  - apiGroups: ["coordination.k8s.io"]
+    resources: ["leases"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+  - apiGroups: [""]
+    resources: ["events"]
+    verbs: ["create", "patch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: xhs-saas-leader-election
+  namespace: xhs-saas
+subjects:
+  - kind: ServiceAccount
+    name: xhs-saas
+    namespace: xhs-saas
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: xhs-saas-leader-election
