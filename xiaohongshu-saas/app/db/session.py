@@ -45,6 +45,33 @@ async def init_db() -> None:
     logger.info("Database initialized at {}", settings.database_url)
 
     await _seed_default_tenant()
+    await _ensure_tasks_tenant_id_column()
+
+
+async def _ensure_tasks_tenant_id_column() -> None:
+    """Ensure tasks.tenant_id column exists (backward compat for pre-alembic DBs).
+
+    This is a safety net for dev SQLite DBs that were created before the
+    alembic migration 0002_tenant_id ran. It is safe to call repeatedly.
+    """
+    from sqlalchemy import text
+
+    try:
+        async with engine.connect() as conn:
+            result = await conn.execute(
+                text("PRAGMA table_info(tasks)")
+            )
+            columns = [row[1] for row in result.fetchall()]
+            if "tenant_id" not in columns:
+                await conn.execute(
+                    text("ALTER TABLE tasks ADD COLUMN tenant_id VARCHAR(64) DEFAULT 'default'")
+                )
+                await conn.commit()
+                logger.info("tasks.tenant_id column added (startup fallback)")
+    except Exception:
+        # Non-blocking: if this fails (e.g. production DB managed by alembic),
+        # the startup should still succeed.
+        logger.warning("tasks.tenant_id column check failed (non-fatal)")
 
 
 async def _seed_default_tenant() -> None:
