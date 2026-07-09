@@ -114,10 +114,21 @@ class ChromaVectorStore(BaseVectorStore):
         self.collection_name = collection_name
         self._client = None
         self._collection = None
+        if not collection_name or len(collection_name) < 3:
+            raise ValueError(
+                f"Chroma collection_name must be >= 3 chars (got {collection_name!r}). "
+                "Chroma requires 3-512 chars from [a-zA-Z0-9._-]."
+            )
 
     def _get_collection(self):
         if self._collection is None:
-            import chromadb
+            try:
+                import chromadb
+            except ImportError as e:
+                raise ImportError(
+                    "chromadb is required for ChromaVectorStore. "
+                    "Install the AI extras: pip install -e '.[ai]'"
+                ) from e
 
             self._client = chromadb.PersistentClient(path=self.persist_directory)
             self._collection = self._client.get_or_create_collection(
@@ -136,15 +147,22 @@ class ChromaVectorStore(BaseVectorStore):
 
     def search(self, query: List[float], top_k: int = 5) -> List[VectorEntry]:
         collection = self._get_collection()
-        results = collection.query(query_embeddings=[query], n_results=top_k)
+        results = collection.query(
+            query_embeddings=[query],
+            n_results=top_k,
+            include=["metadatas"],
+        )
         entries = []
         ids = results.get("ids", [[]])[0]
-        embs = results.get("embeddings", [[]])[0]
+        # Chroma returns None for the "embeddings" field unless explicitly
+        # included. We don't need it (callers already have the query vec), so
+        # we leave VectorEntry.vector empty rather than materialising storage
+        # vectors on every query.
         metas = results.get("metadatas", [[]])[0]
         for i, id in enumerate(ids):
             entries.append(VectorEntry(
                 id=id,
-                vector=embs[i] if i < len(embs) else [],
+                vector=[],
                 metadata=metas[i] if i < len(metas) and metas[i] else {},
             ))
         return entries

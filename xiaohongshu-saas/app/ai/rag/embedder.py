@@ -59,18 +59,36 @@ class LangChainEmbedder(BaseEmbedder):
         if self._embeddings is not None:
             return self._embeddings
         if self.provider == "openai":
-            from langchain_openai import OpenAIEmbeddings
+            try:
+                from langchain_openai import OpenAIEmbeddings
+            except ImportError as e:
+                raise ImportError(
+                    "langchain-openai is required for OpenAI embeddings. "
+                    "Install the AI extras: pip install -e '.[ai]'"
+                ) from e
 
             kwargs = {"model": self.model}
             if self.api_key:
                 kwargs["api_key"] = self.api_key
             self._embeddings = OpenAIEmbeddings(**kwargs)
         elif self.provider == "huggingface":
-            from langchain_community.embeddings import HuggingFaceEmbeddings
+            try:
+                from langchain_community.embeddings import HuggingFaceEmbeddings
+            except ImportError as e:
+                raise ImportError(
+                    "langchain-community is required for HuggingFace embeddings. "
+                    "Install the AI extras: pip install -e '.[ai]'"
+                ) from e
 
             self._embeddings = HuggingFaceEmbeddings(model_name=self.model)
         else:
-            from langchain_community.embeddings import FakeEmbeddings
+            try:
+                from langchain_community.embeddings import FakeEmbeddings
+            except ImportError as e:
+                raise ImportError(
+                    "langchain-community is required for FakeEmbeddings fallback. "
+                    "Install the AI extras: pip install -e '.[ai]'"
+                ) from e
 
             self._embeddings = FakeEmbeddings(size=1536)
         return self._embeddings

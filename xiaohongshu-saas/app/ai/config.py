@@ -7,7 +7,18 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class AISettings(BaseSettings):
-    """AI-related configuration."""
+    """AI-related configuration.
+
+    Environment variables are namespaced under ``AI_`` (e.g. ``AI_VECTOR_STORE_TYPE``,
+    ``AI_LLM_PROVIDER``). API keys are read from their native provider vars
+    (``OPENAI_API_KEY``, ``ANTHROPIC_API_KEY``) so the same secret store works
+    for both this service and any direct SDK usage.
+
+    For RAG, the on-disk default is ``chroma``: Chroma persists to
+    ``AI_VECTOR_STORE_PATH`` (default ``data/embeddings``) and survives process
+    restarts. Set ``AI_VECTOR_STORE_TYPE=memory`` in tests or when you want
+    a fresh in-memory store per run.
+    """
 
     model_config = SettingsConfigDict(env_prefix="AI_", extra="ignore")
 
