@@ -535,12 +535,67 @@ git ls-remote origin main
 ### 剩余待办（v0.7+）
 | 优先级 | 待办 | 状态 |
 |---|---|---|
-| P0 | 推送 AI 重写 | ⏳ 下一条 commit + push |
+| P0 | 推送 AI 重写 | ✅ 2eebf78, origin/main = 2eebf78 |
 | P1 | InMemoryVectorStore → ChromaDB | ❌ 当前是 O(n) 查询，>100k 向量要 HNSW/IVF |
 | P1 | 接真 LLM provider | ❌ 当前自动 fallback 到 mock；prod 走 OpenAI / Anthropic |
 | P1 | MemoryDB → Redis 后端 | ❌ 多进程部署需要共享存储 |
 | P1 | ShortTermMemory 接 Redis sorted set | ❌ 集群部署需要 |
-| P2 | tool registry 加 token bucket 限流 | ❌ 防止下游被击穿 |
+| P2 | tool registry 加 token bucket 限流 | ✅ M7: app/ai/tools/rate_limit.py + 6 unit tests |
+| P2 | Alembic migration 跟上新 ORM 字段 | ❌ 新增列需要 migration |
+| P2 | 把 stress test 接入 CI | ❌ 180s 太长走 nightly |
+| P2 | 内容 agent 真实发到 xhs 跑通端到端 | ❌ 还需要扫码 + 真实 cookie |
+| P2 | Coordinator agent 接入 APScheduler | ❌ 现在是手动 await.run() |
+
+## 2026-07-10 第九次 session 改动（tool registry 限流）
+
+### 背景
+- 第七次 stress test 跑出来 tool 调到了 555k calls/sec（in-process 跑分）—— 这个速度在 prod 会击穿任何真实下游（APScheduler / playwright / OpenAI API）
+- 第八次重写时留了「tool registry 加 token bucket 限流」这条 P2
+- 第九次 session 把它补上
+
+### item: 实现 tool rate limiter
+- **status**: done
+- **改动** (commit `M7`，3 文件 154+/6-):
+  - `app/ai/tools/rate_limit.py` (new, 137 行)：
+    - `TokenBucket` 异步安全的令牌桶（`asyncio.Lock` + `time.monotonic`）
+    - `acquire()` 非阻塞取令牌；`acquire_or_wait(max_wait)` 阻塞版本
+    - `retry_after()` 算出距离下一个令牌的秒数
+    - `rate_per_minute <= 0` 时整个桶禁用
+    - `RateLimiterRegistry` 维护 `tool_name -> TokenBucket` 映射
+  - `app/ai/tools/registry.py`：
+    - `ToolRegistry.__init__` 加 `default_rate_per_minute=60` / `default_capacity=10` 参数
+    - `register()` 自动建桶
+    - `configure_rate_limit(name, rate_per_minute, capacity=10)` 调单个工具限额
+    - `disable_tool(name)` / `enable_tool(name)` 禁用/启用
+    - `execute()` 前置三道闸：disabled → rate-limited → not found
+    - rate_limited 时 `ToolResult` 带 metadata：`{reason, retry_after, limit_per_minute}`
+    - 这样调用方能 backoff 而不是只看到裸 `False`
+  - `tests/test_ai_tools.py`：6 个新测试
+    - 突发（capacity=3，4 次连续 → 3 成功 + 1 rate_limited）
+    - `rate=0` 禁用
+    - refill 验证（600/min capacity=2，1 token 100ms 回）
+    - disabled tool 返回 reason=disabled
+    - per-tool 隔离（title 用完，body 还有）
+    - 暴露 `registry.rate_limiter` 属性
+- **下次注意**:
+  - 默认 60/min 够温和；要让 stress_test_consolidated_v2.py 跑全套 5000+ 调用得显式 configure
+  - v2 stress test 现在用的是 default registry（200 调用量），没碰到限流
+  - 真实生产部署应该按工具类型分层限额：search_trending 30/min、schedule_post 10/min、content_tools 120/min
+  - 跨进程限流当前不实现（TokenBucket 是 in-process）；下一步如果要 P1 集群限流，把 TokenBucket 换成 Redis token bucket
+- **测试**: 142/142 单元测试通过（之前 136 + 6 新增）；stress test v2 全绿 180s
+- **验证**:
+  - 单工具 50 calls @ capacity 10k → 0 rate_limited
+  - 单工具 20 calls @ capacity 10 (default) → 10 成功 + 10 rate_limited（符合预期）
+  - 不同工具之间互不影响（每个工具独立桶）
+
+### 剩余待办（v0.7+）
+| 优先级 | 待办 | 状态 |
+|---|---|---|
+| P1 | InMemoryVectorStore → ChromaDB | ❌ 当前是 O(n) 查询，>100k 向量要 HNSW/IVF |
+| P1 | 接真 LLM provider | ❌ 当前自动 fallback 到 mock；prod 走 OpenAI / Anthropic |
+| P1 | MemoryDB → Redis 后端 | ❌ 多进程部署需要共享存储 |
+| P1 | ShortTermMemory 接 Redis sorted set | ❌ 集群部署需要 |
+| P1 | 把限流挂到 API 网关 | ❌ 当前是 in-process 限流；多 uvicorn worker 不共享 |
 | P2 | Alembic migration 跟上新 ORM 字段 | ❌ 新增列需要 migration |
 | P2 | 把 stress test 接入 CI | ❌ 180s 太长走 nightly |
 | P2 | 内容 agent 真实发到 xhs 跑通端到端 | ❌ 还需要扫码 + 真实 cookie |

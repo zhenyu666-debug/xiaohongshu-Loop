@@ -5,19 +5,70 @@ from typing import Any, Dict, List, Optional, Callable
 from dataclasses import dataclass
 
 from app.ai.tools.base import BaseTool, ToolDefinition, ToolResult
+from app.ai.tools.rate_limit import RateLimiterRegistry, RateLimitExceeded
 
 
 class ToolRegistry:
-    """Registry for managing and accessing tools."""
+    """Registry for managing and accessing tools.
 
-    def __init__(self):
+    Each tool may be configured with a per-tool token-bucket rate limit
+    via :meth:`configure_rate_limit`. Calls that exceed the budget are
+    rejected with :class:`RateLimitExceeded` (returned as a failed
+    ``ToolResult`` from :meth:`execute`).
+    """
+
+    def __init__(
+        self,
+        default_rate_per_minute: float = 60.0,
+        default_capacity: float = 10.0,
+        rate_limiter: Optional[RateLimiterRegistry] = None,
+    ):
         self._tools: Dict[str, BaseTool] = {}
         self._functions: Dict[str, Callable] = {}
+        self._rate_limiter = rate_limiter or RateLimiterRegistry(
+            default_rate_per_minute=default_rate_per_minute,
+            default_capacity=default_capacity,
+        )
+        self._disabled: set[str] = set()
 
     def register(self, tool: BaseTool) -> None:
         """Register a tool."""
         definition = tool.get_definition()
         self._tools[definition.name] = tool
+        # Auto-create a rate-limit bucket for the tool at the registry's default
+        # rate. Tools can override via configure_rate_limit() after registration.
+        self._rate_limiter.get(definition.name)
+
+    def configure_rate_limit(
+        self,
+        tool_name: str,
+        rate_per_minute: float,
+        capacity: float = 10.0,
+    ) -> None:
+        """Set or override the rate limit for a registered tool.
+
+        ``rate_per_minute <= 0`` disables limiting for the tool.
+        """
+        self._rate_limiter.configure(
+            tool_name,
+            rate_per_minute=rate_per_minute,
+            capacity=capacity,
+        )
+
+    def disable_tool(self, tool_name: str) -> None:
+        """Disable a tool. Calls return an error result without execution."""
+        self._disabled.add(tool_name)
+
+    def enable_tool(self, tool_name: str) -> None:
+        """Re-enable a previously disabled tool."""
+        self._disabled.discard(tool_name)
+
+    def is_disabled(self, tool_name: str) -> bool:
+        return tool_name in self._disabled
+
+    @property
+    def rate_limiter(self) -> RateLimiterRegistry:
+        return self._rate_limiter
 
     def register_function(self, name: str, func: Callable, description: str = "") -> None:
         """Register a simple function as a tool."""
@@ -51,14 +102,39 @@ class ToolRegistry:
         ]
 
     async def execute(self, name: str, **kwargs) -> ToolResult:
-        """Execute a tool by name."""
+        """Execute a tool by name.
+
+        - Disabled tools return ``ToolResult(success=False, error="disabled")``
+        - Over-budget calls return ``ToolResult(success=False, error="rate_limited")``
+          with metadata ``retry_after`` and ``limit_per_minute`` for backoff
+        - Exceptions in the tool body are caught and returned as failed results
+        """
+        if name in self._disabled:
+            return ToolResult(
+                success=False,
+                error=f"Tool '{name}' is disabled",
+                metadata={"reason": "disabled"},
+            )
+
+        if not await self._rate_limiter.get(name).acquire():
+            bucket = self._rate_limiter.get(name)
+            return ToolResult(
+                success=False,
+                error=f"Rate limit exceeded for tool '{name}'",
+                metadata={
+                    "reason": "rate_limited",
+                    "retry_after": bucket.retry_after(),
+                    "limit_per_minute": bucket.rate_per_minute,
+                },
+            )
+
         tool = self.get(name)
         if tool:
             try:
                 return await tool.execute(**kwargs)
             except Exception as e:
                 return ToolResult(success=False, error=str(e))
-        
+
         func = self.get_function(name)
         if func:
             try:
@@ -68,7 +144,7 @@ class ToolRegistry:
                 return ToolResult(success=True, data=result)
             except Exception as e:
                 return ToolResult(success=False, error=str(e))
-        
+
         return ToolResult(success=False, error=f"Tool '{name}' not found")
 
     def get_all_definitions(self) -> List[Dict[str, Any]]:
