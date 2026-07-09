@@ -28,6 +28,26 @@ class BaseVectorStore(ABC):
         pass
 
     @abstractmethod
+
+    def _rebuild_cache(self) -> None:
+        """Rebuild numpy matrix cache for fast batch search."""
+        import numpy as np
+        if not self.entries:
+            self._matrix_cache = None
+            self._id_list = []
+            return
+        ids = list(self.entries.keys())
+        vectors = []
+        for entry_id in ids:
+            entry = self.entries[entry_id]
+            vec = np.asarray(entry.vector, dtype=np.float32)
+            norm = np.linalg.norm(vec)
+            if norm > 0:
+                vec = vec / norm
+            vectors.append(vec)
+        self._matrix_cache = np.vstack(vectors)
+        self._id_list = [self.entries[i] for i in ids]
+
     def search(self, query: List[float], top_k: int = 5) -> List[VectorEntry]:
         """Search for similar entries."""
         pass
@@ -49,34 +69,72 @@ class InMemoryVectorStore(BaseVectorStore):
     def __init__(self, metric: str = "cosine"):
         self.entries: Dict[str, VectorEntry] = {}
         self.metric = metric
+        self._matrix_cache = None
+        self._id_list = []
 
     def add(self, entries: List[VectorEntry]) -> None:
         """Add entries to memory."""
         for entry in entries:
             self.entries[entry.id] = entry
+        self._rebuild_cache()
+
+
+    def _rebuild_cache(self) -> None:
+        """Rebuild numpy matrix cache for fast batch search."""
+        import numpy as np
+        if not self.entries:
+            self._matrix_cache = None
+            self._id_list = []
+            return
+        ids = list(self.entries.keys())
+        vectors = []
+        for entry_id in ids:
+            entry = self.entries[entry_id]
+            vec = np.asarray(entry.vector, dtype=np.float32)
+            norm = np.linalg.norm(vec)
+            if norm > 0:
+                vec = vec / norm
+            vectors.append(vec)
+        self._matrix_cache = np.vstack(vectors)
+        self._id_list = [self.entries[i] for i in ids]
 
     def search(self, query: List[float], top_k: int = 5) -> List[VectorEntry]:
-        """Search by cosine similarity."""
-        if not self.entries:
+        """Search for similar entries using numpy and heap."""
+        import numpy as np
+        import heapq
+
+        if self._matrix_cache is None and not self.entries:
             return []
 
-        query_vec = np.array(query)
-        results = []
+        query_vec = np.asarray(query, dtype=np.float32)
+        norm = np.linalg.norm(query_vec)
+        if norm > 0:
+            query_vec = query_vec / norm
 
-        for entry in self.entries.values():
-            vec = np.array(entry.vector)
-            
-            if self.metric == "cosine":
-                similarity = self._cosine_similarity(query_vec, vec)
-            elif self.metric == "euclidean":
-                similarity = -self._euclidean_distance(query_vec, vec)
+        # Use pre-built matrix cache if available
+        if self._matrix_cache is not None and len(self._matrix_cache) == len(self.entries):
+            # Batch cosine similarity
+            sims = self._matrix_cache @ query_vec  # (N,) dot product
+            # Use argpartition for top-k (faster than full sort)
+            if len(sims) <= top_k:
+                top_indices = np.argsort(-sims)
             else:
-                similarity = self._cosine_similarity(query_vec, vec)
+                top_indices = np.argpartition(-sims, top_k)[:top_k]
+                top_indices = top_indices[np.argsort(-sims[top_indices])]
+            return [self._id_list[i] for i in top_indices]
+        else:
+            # Fallback to original logic
+            results = []
+            for entry in self.entries.values():
+                vec = np.array(entry.vector, dtype=np.float32)
+                vec_norm = np.linalg.norm(vec)
+                if vec_norm > 0:
+                    vec = vec / vec_norm
+                similarity = float(np.dot(query_vec, vec))
+                results.append((similarity, entry))
+            results.sort(key=lambda x: x[0], reverse=True)
+            return [entry for _, entry in results[:top_k]]
 
-            results.append((similarity, entry))
-
-        results.sort(key=lambda x: x[0], reverse=True)
-        return [entry for _, entry in results[:top_k]]
 
     @staticmethod
     def _cosine_similarity(a: np.ndarray, b: np.ndarray) -> float:
@@ -139,6 +197,26 @@ class ChromaVectorStore(BaseVectorStore):
             metadatas=metadatas
         )
 
+
+    def _rebuild_cache(self) -> None:
+        """Rebuild numpy matrix cache for fast batch search."""
+        import numpy as np
+        if not self.entries:
+            self._matrix_cache = None
+            self._id_list = []
+            return
+        ids = list(self.entries.keys())
+        vectors = []
+        for entry_id in ids:
+            entry = self.entries[entry_id]
+            vec = np.asarray(entry.vector, dtype=np.float32)
+            norm = np.linalg.norm(vec)
+            if norm > 0:
+                vec = vec / norm
+            vectors.append(vec)
+        self._matrix_cache = np.vstack(vectors)
+        self._id_list = [self.entries[i] for i in ids]
+
     def search(self, query: List[float], top_k: int = 5) -> List[VectorEntry]:
         """Search ChromaDB."""
         collection = self._get_collection()
@@ -180,6 +258,26 @@ class VectorStore:
     def add(self, entries: List[VectorEntry]) -> None:
         """Add entries."""
         self.store.add(entries)
+
+
+    def _rebuild_cache(self) -> None:
+        """Rebuild numpy matrix cache for fast batch search."""
+        import numpy as np
+        if not self.entries:
+            self._matrix_cache = None
+            self._id_list = []
+            return
+        ids = list(self.entries.keys())
+        vectors = []
+        for entry_id in ids:
+            entry = self.entries[entry_id]
+            vec = np.asarray(entry.vector, dtype=np.float32)
+            norm = np.linalg.norm(vec)
+            if norm > 0:
+                vec = vec / norm
+            vectors.append(vec)
+        self._matrix_cache = np.vstack(vectors)
+        self._id_list = [self.entries[i] for i in ids]
 
     def search(self, query: List[float], top_k: int = 5) -> List[VectorEntry]:
         """Search entries."""

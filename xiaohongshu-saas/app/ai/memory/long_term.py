@@ -28,12 +28,18 @@ class LongTermMemory:
     def __init__(
         self,
         storage_path: str = "data/memory",
-        max_items: int = 1000
+        max_items: int = 1000,
+        auto_save: bool = True,
+        save_batch_size: int = 100
     ):
         self.storage_path = Path(storage_path)
         self.max_items = max_items
+        self.auto_save = auto_save
+        self.save_batch_size = save_batch_size
+        self._pending_saves = {}
         self.storage_path.mkdir(parents=True, exist_ok=True)
-        self._items: Dict[str, LongTermMemoryItem] = {}
+        self._items = {}
+        self._word_index: Dict[str, Set[str]] = {}
         self._load()
 
     def _get_storage_file(self, category: str = "default") -> Path:
@@ -49,8 +55,24 @@ class LongTermMemory:
                     for item_data in data.get("items", []):
                         item = LongTermMemoryItem(**item_data)
                         self._items[item.id] = item
+                        self._index_item(item)
             except Exception:
                 pass
+
+    def _index_item(self, item) -> None:
+        """Add item to inverted index."""
+        for word in set(item.content.lower().split()):
+            if len(word) > 2:
+                if word not in self._word_index:
+                    self._word_index[word] = set()
+                self._word_index[word].add(item.id)
+
+    def flush(self):
+        """Force save all pending writes to disk."""
+        for category in list(self._pending_saves.keys()):
+            if self._pending_saves.get(category, 0) > 0:
+                self._save(category)
+                self._pending_saves[category] = 0
 
     def _save(self, category: str = "default") -> None:
         """Save memories to disk."""
@@ -93,36 +115,86 @@ class LongTermMemory:
             metadata=metadata or {}
         )
         
+        # Cache content for fast similarity
+        item._content_words = set(item.content.lower().split())
+        item._content_lower = item.content.lower()
         self._items[item_id] = item
-        self._save(category)
-        
+        self._index_item(item)
+
+        if self.auto_save:
+
+            self._pending_saves[category] = self._pending_saves.get(category, 0) + 1
+
+            if self._pending_saves[category] >= self.save_batch_size:
+
+                self._save(category)
+
+                self._pending_saves[category] = 0
+
+        else:
+
+            self._save(category)
+
+
+
         return item_id
 
     def recall(
         self,
         query: str,
         category: Optional[str] = None,
-        limit: int = 5
+        limit: int = 5,
+        track_access: bool = True
     ) -> List[LongTermMemoryItem]:
-        """Recall relevant memories."""
+        """Recall relevant memories using inverted index with cached word sets."""
+        if not query or not query.strip():
+            return []
+
         query_lower = query.lower()
+        query_words = set()
+        for w in query_lower.split():
+            if len(w) > 2:
+                query_words.add(w)
+
+        if not query_words:
+            # Fallback: treat short query as substring search
+            query_words = set(query_lower.split())
+
+        # Use inverted index for fast lookup
+        candidate_ids = set()
+        for word in query_words:
+            if word in self._word_index:
+                candidate_ids.update(self._word_index[word])
+
+        # If no candidates from index, fall back to full scan
+        if not candidate_ids:
+            candidate_ids = set(self._items.keys())
+
         results = []
-        
-        for item in self._items.values():
+        for item_id in candidate_ids:
+            item = self._items.get(item_id)
+            if item is None:
+                continue
             if category and item.category != category:
                 continue
-            
-            # Update access stats
-            item.access_count += 1
-            item.accessed_at = datetime.now()
-            
-            # Calculate relevance
-            if query_lower in item.content.lower():
-                results.append((item.importance * 1.5, item))
-            elif self._calculate_similarity(query_lower, item.content.lower()) > 0.3:
-                results.append((item.importance, item))
-        
-        # Sort by relevance
+
+            if track_access:
+                item.access_count += 1
+                item.accessed_at = datetime.now()
+
+            content_words = item._content_words
+            if not content_words:
+                continue
+            overlap = len(query_words & content_words)
+            if overlap == 0:
+                continue
+            score = overlap
+            if len(query_lower) <= 20:
+                content_lower = getattr(item, "_content_lower", None) or item.content.lower()
+                if query_lower in content_lower:
+                    score += 5
+            results.append((item.importance * (1 + score), item))
+
         results.sort(key=lambda x: x[0], reverse=True)
         return [item for _, item in results[:limit]]
 

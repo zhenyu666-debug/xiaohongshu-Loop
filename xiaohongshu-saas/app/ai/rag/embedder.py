@@ -28,13 +28,15 @@ class MockEmbedder(BaseEmbedder):
         return self.embed_sync(texts)
 
     def embed_sync(self, texts: List[str]) -> List[List[float]]:
-        """Generate deterministic mock embeddings."""
+        """Generate deterministic mock embeddings using vectorized hash."""
+        import hashlib
         embeddings = []
         for text in texts:
-            # Simple hash-based mock embedding
-            seed = sum(ord(c) for c in text[:100])
-            np.random.seed(seed)
-            vector = np.random.randn(384).tolist()
+            # Use hashlib for faster, deterministic seed
+            h = hashlib.md5(text.encode("utf-8", errors="ignore")).digest()
+            seed = int.from_bytes(h[:4], "big")
+            rng = np.random.default_rng(seed)
+            vector = rng.standard_normal(384).tolist()
             embeddings.append(vector)
         return embeddings
 
