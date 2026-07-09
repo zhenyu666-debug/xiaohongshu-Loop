@@ -1,106 +1,90 @@
-"""Text splitter for document chunking."""
-from __future__ import annotations
-
-import re
-from typing import List, Callable
-from dataclasses import dataclass
-
-from app.ai.rag.document_loader import Document
-
-
-@dataclass
-class Chunk:
-    """Represents a text chunk."""
-    content: str
-    metadata: dict
-    chunk_index: int
-    total_chunks: int
-
-
-class TextSplitter:
-    """Split text into overlapping chunks."""
-
-    def __init__(
-        self,
-        chunk_size: int = 512,
-        chunk_overlap: int = 50,
-        separators: List[str] = None
-    ):
-        self.chunk_size = chunk_size
-        self.chunk_overlap = chunk_overlap
-        self.separators = separators or ["\n\n", "\n", ". ", " "]
-
-    def split_text(self, text: str, metadata: dict = None) -> List[Chunk]:
-        """Split text into chunks."""
-        if metadata is None:
-            metadata = {}
-
-        chunks = []
-        start = 0
-        text_len = len(text)
-        chunk_index = 0
-
-        # Safety: ensure chunk_overlap is less than chunk_size
-        if self.chunk_overlap >= self.chunk_size:
-            self.chunk_overlap = max(1, self.chunk_size // 2)
-
-        max_iterations = text_len + 100
-        iteration = 0
-
-        while start < text_len and iteration < max_iterations:
-            iteration += 1
-            end = min(start + self.chunk_size, text_len)
-
-            # Try to find a good split point
-            if end < text_len:
-                for sep in self.separators:
-                    pos = text.rfind(sep, start, end)
-                    if pos > start:
-                        end = pos + len(sep)
-                        break
-
-            chunk_text = text[start:end].strip()
-            if chunk_text:
-                chunks.append(Chunk(
-                    content=chunk_text,
-                    metadata={**metadata, "start": start, "end": end},
-                    chunk_index=chunk_index,
-                    total_chunks=0
-                ))
-                chunk_index += 1
-
-            # Advance start position - guarantee progress
-            new_start = end - self.chunk_overlap
-            if new_start <= start:
-                new_start = start + 1
-            start = new_start
-
-        # Update total chunks
-        for chunk in chunks:
-            chunk.total_chunks = len(chunks)
-
-        return chunks
-
-    def split_documents(self, documents: List[Document]) -> List[Chunk]:
-        """Split multiple documents into chunks."""
-        all_chunks = []
-        for doc in documents:
-            chunks = self.split_text(doc.content, doc.metadata)
-            all_chunks.extend(chunks)
-        return all_chunks
-
-
-class RecursiveTextSplitter(TextSplitter):
-    """Advanced text splitter with recursive splitting."""
-
-    def split_text(self, text: str, metadata: dict = None) -> List[Chunk]:
-        """Split text using multiple strategies."""
-        if len(text) <= self.chunk_size:
-            return [Chunk(
-                content=text,
-                metadata=metadata or {},
-                chunk_index=0,
-                total_chunks=1
-            )]
-
-        return super().split_text(text, metadata)
+"""Text splitter using LangChain's RecursiveCharacterTextSplitter as the primary path."""
+from __future__ import annotations
+
+from typing import List, Optional
+from dataclasses import dataclass
+
+from app.ai.rag.document_loader import Document
+
+
+@dataclass
+class Chunk:
+    content: str
+    metadata: dict
+    chunk_index: int
+    total_chunks: int
+
+
+class TextSplitter:
+    """Recursive character splitter. Defaults to LangChain's implementation."""
+
+    def __init__(
+        self,
+        chunk_size: int = 512,
+        chunk_overlap: int = 50,
+        separators: Optional[List[str]] = None,
+    ):
+        self.chunk_size = chunk_size
+        self.chunk_overlap = chunk_overlap
+        self.separators = separators or ["\n\n", "\n", ". ", " ", ""]
+        self._lc_splitter = None
+
+    def _get_splitter(self):
+        if self._lc_splitter is None:
+            try:
+                from langchain_text_splitters import RecursiveCharacterTextSplitter
+                self._lc_splitter = RecursiveCharacterTextSplitter(
+                    chunk_size=self.chunk_size,
+                    chunk_overlap=self.chunk_overlap,
+                    separators=self.separators,
+                )
+            except ImportError:
+                self._lc_splitter = None
+        return self._lc_splitter
+
+    def split_text(self, text: str, metadata: Optional[dict] = None) -> List[Chunk]:
+        metadata = metadata or {}
+        splitter = self._get_splitter()
+        if splitter is not None:
+            pieces = splitter.split_text(text)
+            return [
+                Chunk(
+                    content=p,
+                    metadata={**metadata, "chunk_index": i},
+                    chunk_index=i,
+                    total_chunks=len(pieces),
+                )
+                for i, p in enumerate(pieces)
+            ]
+        return self._split_fallback(text, metadata)
+
+    def _split_fallback(self, text: str, metadata: dict) -> List[Chunk]:
+        chunks: List[Chunk] = []
+        start = 0
+        text_len = len(text)
+        idx = 0
+        while start < text_len:
+            end = min(start + self.chunk_size, text_len)
+            if end < text_len:
+                for sep in self.separators:
+                    pos = text.rfind(sep, start, end)
+                    if pos > start:
+                        end = pos + len(sep)
+                        break
+            piece = text[start:end].strip()
+            if piece:
+                chunks.append(Chunk(content=piece, metadata={**metadata, "chunk_index": idx}, chunk_index=idx, total_chunks=0))
+                idx += 1
+            new_start = end - self.chunk_overlap
+            if new_start <= start:
+                new_start = start + 1
+            start = new_start
+        for c in chunks:
+            c.total_chunks = len(chunks)
+        return chunks
+
+    def split_documents(self, documents: List[Document]) -> List[Chunk]:
+        all_chunks: List[Chunk] = []
+        for doc in documents:
+            all_chunks.extend(self.split_text(doc.content, doc.metadata))
+        return all_chunks

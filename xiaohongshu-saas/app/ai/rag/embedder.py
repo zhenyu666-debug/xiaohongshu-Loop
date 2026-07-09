@@ -3,7 +3,11 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 from typing import List, Optional
+import hashlib
+
 import numpy as np
+
+from app.ai.config import settings
 
 
 class BaseEmbedder(ABC):
@@ -11,101 +15,98 @@ class BaseEmbedder(ABC):
 
     @abstractmethod
     async def embed(self, texts: List[str]) -> List[List[float]]:
-        """Embed texts into vectors."""
         pass
 
     @abstractmethod
     def embed_sync(self, texts: List[str]) -> List[List[float]]:
-        """Synchronous embedding."""
         pass
 
 
 class MockEmbedder(BaseEmbedder):
-    """Mock embedder for testing."""
+    """Deterministic mock embedder (used for tests only)."""
 
-    def embed(self, texts: List[str]) -> List[List[float]]:
-        """Return mock embeddings."""
+    def __init__(self, dim: int = 384):
+        self.dim = dim
+
+    async def embed(self, texts: List[str]) -> List[List[float]]:
         return self.embed_sync(texts)
 
     def embed_sync(self, texts: List[str]) -> List[List[float]]:
-        """Generate deterministic mock embeddings using vectorized hash."""
-        import hashlib
         embeddings = []
         for text in texts:
-            # Use hashlib for faster, deterministic seed
             h = hashlib.md5(text.encode("utf-8", errors="ignore")).digest()
             seed = int.from_bytes(h[:4], "big")
             rng = np.random.default_rng(seed)
-            vector = rng.standard_normal(384).tolist()
-            embeddings.append(vector)
+            embeddings.append(rng.standard_normal(self.dim).tolist())
         return embeddings
 
 
-class OpenAIEmbedder(BaseEmbedder):
-    """OpenAI text embedder."""
+class LangChainEmbedder(BaseEmbedder):
+    """LangChain-based embedder. Defaults to OpenAI."""
 
-    def __init__(self, api_key: Optional[str] = None, model: str = "text-embedding-3-small"):
-        self.api_key = api_key
-        self.model = model
-        self._client = None
+    def __init__(
+        self,
+        provider: Optional[str] = None,
+        model: Optional[str] = None,
+        api_key: Optional[str] = None,
+    ):
+        self.provider = provider or settings.llm_provider
+        self.model = model or settings.embedding_model
+        self.api_key = api_key or settings.llm_api_key
+        self._embeddings = None
 
-    def _get_client(self):
-        """Get or create OpenAI client."""
-        if self._client is None:
-            try:
-                from openai import AsyncOpenAI
-                self._client = AsyncOpenAI(api_key=self.api_key)
-            except ImportError:
-                raise ImportError("openai package required: pip install openai")
-        return self._client
+    def _get_embeddings(self):
+        if self._embeddings is not None:
+            return self._embeddings
+        if self.provider == "openai":
+            from langchain_openai import OpenAIEmbeddings
+
+            kwargs = {"model": self.model}
+            if self.api_key:
+                kwargs["api_key"] = self.api_key
+            self._embeddings = OpenAIEmbeddings(**kwargs)
+        elif self.provider == "huggingface":
+            from langchain_community.embeddings import HuggingFaceEmbeddings
+
+            self._embeddings = HuggingFaceEmbeddings(model_name=self.model)
+        else:
+            from langchain_community.embeddings import FakeEmbeddings
+
+            self._embeddings = FakeEmbeddings(size=1536)
+        return self._embeddings
 
     async def embed(self, texts: List[str]) -> List[List[float]]:
-        """Embed texts using OpenAI API."""
-        client = self._get_client()
-        try:
-            response = await client.embeddings.create(
-                model=self.model,
-                input=texts
-            )
-            return [item.embedding for item in response.data]
-        except Exception as e:
-            raise RuntimeError(f"OpenAI embedding failed: {e}")
+        embeddings = self._get_embeddings()
+        return await embeddings.aembed_documents(texts)
 
     def embed_sync(self, texts: List[str]) -> List[List[float]]:
-        """Synchronous embedding using OpenAI."""
-        try:
-            from openai import OpenAI
-            client = OpenAI(api_key=self.api_key)
-            response = client.embeddings.create(
-                model=self.model,
-                input=texts
-            )
-            return [item.embedding for item in response.data]
-        except ImportError:
-            raise ImportError("openai package required: pip install openai")
+        embeddings = self._get_embeddings()
+        if hasattr(embeddings, "embed_documents"):
+            return embeddings.embed_documents(texts)
+        return [embeddings.embed_query(t) for t in texts]
 
 
 class Embedder:
-    """Main embedder facade."""
+    """Main embedder facade. Defaults to OpenAI when a key is available."""
 
-    def __init__(self, provider: str = "mock", **kwargs):
-        self.provider = provider
-        if provider == "openai":
-            self.embedder = OpenAIEmbedder(**kwargs)
+    def __init__(self, provider: Optional[str] = None, **kwargs):
+        env_provider = provider or settings.llm_provider
+        # Auto-fallback to mock when no API key is configured
+        if env_provider in ("openai", "anthropic") and not settings.llm_api_key:
+            env_provider = "mock"
+        if env_provider == "mock":
+            self.embedder: BaseEmbedder = MockEmbedder(**kwargs)
         else:
-            self.embedder = MockEmbedder()
+            self.embedder = LangChainEmbedder(provider=env_provider, **kwargs)
 
     async def embed(self, texts: List[str]) -> List[List[float]]:
-        """Embed texts."""
         return await self.embedder.embed(texts)
 
     def embed_sync(self, texts: List[str]) -> List[List[float]]:
-        """Synchronous embedding."""
         return self.embedder.embed_sync(texts)
 
     @property
     def dimension(self) -> int:
-        """Get embedding dimension."""
         if isinstance(self.embedder, MockEmbedder):
-            return 384
-        return 1536  # OpenAI default
+            return self.embedder.dim
+        return 1536

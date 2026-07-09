@@ -44,6 +44,16 @@ ai = [
     "numpy>=1.24",
     "pypdf>=4.0",
     "tiktoken>=0.5",
+    "langchain>=0.2",
+    "langchain-openai>=0.1",
+    "langchain-community>=0.2",
+    "langchain-text-splitters>=0.2",
+    "langgraph>=0.2,<0.3",
+    "langgraph-checkpoint-sqlite>=2.0",
+    "langchain-mcp-adapters>=0.1",
+    "sentence-transformers>=2.7",
+    "docx2txt>=0.8",
+    "aiosqlite>=0.19",
 ]
 monitoring = [
     "prometheus-client>=0.20",

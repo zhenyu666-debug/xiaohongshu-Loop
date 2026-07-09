@@ -1,4 +1,7 @@
-﻿"""LangChain integration module."""
-from app.ai.langchain.chain import create_chain, run_chain
+﻿"""LangChain integration module.
 
-__all__ = ["create_chain", "run_chain"]
+Re-exports LangChain primitives used by the AI module.
+"""
+from app.ai.llm import LLMClient, LLMResponse, build_default_llm
+
+__all__ = ["LLMClient", "LLMResponse", "build_default_llm"]

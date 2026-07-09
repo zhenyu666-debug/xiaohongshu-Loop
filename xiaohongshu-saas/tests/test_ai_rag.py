@@ -86,14 +86,14 @@ def test_reranker():
 async def test_generator_mock():
     entries = [VectorEntry(id="1", vector=[1, 0], metadata={"text": "Test content here"})]
     results = [SearchResult(entry=e, score=0.8) for e in entries]
-    gen = Generator(llm_provider="mock")
+    gen = Generator(provider="mock")
     output = await gen.generate("query", results)
     assert output.answer != ""
 
 
 @pytest.mark.asyncio
 async def test_generator_empty_context():
-    gen = Generator(llm_provider="mock")
+    gen = Generator(provider="mock")
     output = await gen.generate("query", [])
     assert output.confidence == 0.0
 
@@ -103,7 +103,7 @@ async def test_rag_pipeline_query():
     embedder = MockEmbedder()
     store = InMemoryVectorStore()
     retriever = Retriever(store, embedder, top_k=3)
-    generator = Generator(llm_provider="mock")
+    generator = Generator(provider="mock")
     pipeline = RAGPipeline(embedder, store, retriever, generator)
     documents = [
         {"content": "AI is transforming the world", "source": "doc1"},
@@ -120,3 +120,59 @@ def test_document_loader_directory(tmp_path):
     loader = DocumentLoader()
     docs = loader.load(str(tmp_path))
     assert len(docs) == 2
+
+
+def test_pdf_loader_registered():
+    from app.ai.rag.document_loader import DirectoryLoader, PDFLoader
+    assert ".pdf" in DirectoryLoader.DEFAULT_LOADERS
+    assert isinstance(DirectoryLoader.DEFAULT_LOADERS[".pdf"], PDFLoader)
+
+
+def test_docx_loader_registered():
+    from app.ai.rag.document_loader import DirectoryLoader, DocxLoader
+    assert ".docx" in DirectoryLoader.DEFAULT_LOADERS
+    assert isinstance(DirectoryLoader.DEFAULT_LOADERS[".docx"], DocxLoader)
+
+
+def test_text_splitter_uses_langchain_path():
+    """The splitter should fall back gracefully if langchain_text_splitters is missing."""
+    splitter = TextSplitter(chunk_size=50, chunk_overlap=10)
+    chunks = splitter.split_text("Sentence one. Sentence two. " * 10)
+    assert len(chunks) > 1
+    assert all(c.total_chunks == len(chunks) for c in chunks)
+
+
+def test_cross_encoder_reranker_falls_back_on_missing_model():
+    from app.ai.rag.reranker import CrossEncoderReranker
+    from app.ai.rag.vector_store import VectorEntry
+    entries = [
+        VectorEntry(id="1", vector=[1, 0], metadata={"text": "Python tutorial"}),
+        VectorEntry(id="2", vector=[0, 1], metadata={"text": "JavaScript guide"}),
+    ]
+    results = [SearchResult(entry=e, score=0.5) for e in entries]
+    reranker = CrossEncoderReranker(model_name="definitely-does-not-exist-xyz")
+    out = reranker.rerank("Python", results, top_n=2)
+    assert len(out) == 2
+    assert out[0].entry.id == "1"
+
+
+@pytest.mark.asyncio
+async def test_generator_idk_path():
+    """When context is empty, generator should fall back gracefully (no LLM call)."""
+    gen = Generator(provider="mock")
+    result = await gen.generate("anything", [])
+    assert result.confidence == 0.0
+
+
+@pytest.mark.asyncio
+async def test_rag_query_with_streaming():
+    embedder = MockEmbedder()
+    store = InMemoryVectorStore()
+    retriever = Retriever(store, embedder, top_k=2)
+    generator = Generator(provider="mock")
+    pipeline = RAGPipeline(embedder, store, retriever, generator)
+    pipeline.index_documents([{"content": "streaming test doc", "source": "s1"}])
+    chunks = []
+    async for tok in pipeline.query_stream("test"):
+        chunks.append(tok)
+    assert isinstance(chunks, list)

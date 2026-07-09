@@ -1,62 +1,64 @@
-"""Memory manager coordinating all memory types."""
+"""Memory manager with summarize-then-consolidate and 4-layer SQLite backend."""
 from __future__ import annotations
 
 from typing import Any, Dict, List, Optional
 
+from app.ai.memory.db import MemoryDB
 from app.ai.memory.short_term import ShortTermMemory
 from app.ai.memory.long_term import LongTermMemory
 from app.ai.memory.episodic import EpisodicMemory
 from app.ai.memory.semantic import SemanticMemory
+from app.ai.memory.summarize import summarize_text
 
 
 class MemoryManager:
-    """Central manager for all memory systems."""
+    """Central manager. Coordinates 4 layers + summarization on consolidation."""
 
     def __init__(
         self,
-        short_term_max: int = 50,
-        long_term_path: str = "data/memory",
-        episodic_path: str = "data/memory/episodes",
-        semantic_path: str = "data/memory/semantic"
+        db: MemoryDB,
+        agent_id: str = "default",
+        tenant_id: str = "default",
+        llm_provider: str = "mock",
+        llm_model: Optional[str] = None,
     ):
-        self.short_term = ShortTermMemory(max_items=short_term_max)
-        self.long_term = LongTermMemory(storage_path=long_term_path)
-        self.episodic = EpisodicMemory(storage_path=episodic_path)
-        self.semantic = SemanticMemory(storage_path=semantic_path)
+        self.db = db
+        self.agent_id = agent_id
+        self.tenant_id = tenant_id
+        self.llm_provider = llm_provider
+        self.llm_model = llm_model
+        self.short_term = ShortTermMemory(db, agent_id, tenant_id)
+        self.long_term = LongTermMemory(db, agent_id, tenant_id)
+        self.episodic = EpisodicMemory(db, agent_id, tenant_id)
+        self.semantic = SemanticMemory(db, agent_id, tenant_id)
 
     async def add(
         self,
         content: str,
         importance: float = 0.5,
         memory_type: str = "short",
-        **kwargs
+        **kwargs,
     ) -> Optional[str]:
-        """Add to memory based on type."""
         if memory_type == "short":
-            self.short_term.add(content, importance, kwargs.get("metadata"))
-            return None
-        
-        elif memory_type == "long":
-            return self.long_term.store(
+            return await self.short_term.add(content, importance, kwargs.get("metadata"))
+        if memory_type == "long":
+            return await self.long_term.store(
                 content=content,
                 importance=importance,
                 category=kwargs.get("category", "general"),
-                metadata=kwargs.get("metadata")
+                metadata=kwargs.get("metadata"),
             )
-        
-        elif memory_type == "episodic":
-            self.episodic.add_event({"content": content, **kwargs})
-            return None
-        
-        elif memory_type == "semantic":
-            return self.semantic.store(
+        if memory_type == "semantic":
+            return await self.semantic.store(
                 statement=content,
                 source=kwargs.get("source", "user"),
                 tags=kwargs.get("tags", []),
                 confidence=kwargs.get("confidence", 1.0),
-                metadata=kwargs.get("metadata")
+                metadata=kwargs.get("metadata"),
             )
-        
+        if memory_type == "episodic":
+            await self.episodic.add_event({"content": content, **kwargs})
+            return None
         return None
 
     async def recall(
@@ -64,118 +66,71 @@ class MemoryManager:
         query: str,
         memory_types: Optional[List[str]] = None,
         limit: int = 5,
-        **kwargs
+        **kwargs,
     ) -> Dict[str, List[Any]]:
-        """Recall from multiple memory types."""
-        if memory_types is None:
-            memory_types = ["short", "long", "semantic"]
-        
-        results = {}
-        
-        if "short" in memory_types:
-            short_results = self.short_term.search(query)
+        types = memory_types or ["short", "long", "semantic", "episodic"]
+        results: Dict[str, List[Any]] = {}
+
+        if "short" in types:
+            short_results = await self.short_term.search(query, limit=limit)
             results["short_term"] = [
-                {"content": r.content, "importance": r.importance, "timestamp": r.timestamp.isoformat()}
-                for r in short_results[:limit]
+                {"content": r.content, "importance": r.importance, "timestamp": r.timestamp}
+                for r in short_results
             ]
-        
-        if "long" in memory_types:
-            long_results = self.long_term.recall(query, limit=limit)
+        if "long" in types:
+            long_results = await self.long_term.recall(query, limit=limit)
             results["long_term"] = [
                 {"id": r.id, "content": r.content, "importance": r.importance, "category": r.category}
                 for r in long_results
             ]
-        
-        if "semantic" in memory_types:
-            semantic_results = self.semantic.recall(query, tags=kwargs.get("tags"))
+        if "semantic" in types:
+            sem = await self.semantic.recall(query, tags=kwargs.get("tags"))
             results["semantic"] = [
-                {"id": r.id, "statement": r.statement, "confidence": r.confidence, "tags": r.tags}
-                for r in semantic_results[:limit]
+                {"id": f.id, "statement": f.statement, "confidence": f.confidence, "tags": f.tags}
+                for f in sem[:limit]
             ]
-        
+        if "episodic" in types:
+            eps = await self.episodic.search(query, limit=limit)
+            results["episodic"] = [
+                {"id": e.id, "summary": e.summary, "event_count": len(e.events)}
+                for e in eps
+            ]
         return results
 
-    def get_context(self, limit: int = 10) -> str:
-        """Get context from short-term memory."""
-        return self.short_term.get_context(limit)
-
     async def consolidate(self, threshold: float = 0.7) -> int:
-        """Move important short-term memories to long-term."""
-        items = self.short_term.consolidate(threshold)
-        count = 0
-        
+        """Summarize short-term items >= threshold, then promote to long-term.
+
+        New behavior (vs legacy): the short-term items are summarized via LLM,
+        then a single derived-from-tracked long-term item is stored. The source
+        items are removed from short-term. This is "context evolution" — the
+        short-term chatter becomes a long-term fact.
+        """
+        items = await self.short_term.consolidate(threshold)
+        if not items:
+            return 0
+        text_blob = "\n".join(f"- {i.content}" for i in items)
+        summary = await summarize_text(text_blob, self.llm_provider, self.llm_model)
+        derived_from = [i.id for i in items]
+        await self.long_term.store(
+            content=summary,
+            importance=max(i.importance for i in items),
+            category="consolidated",
+            metadata={"source_item_count": len(items)},
+            derived_from=derived_from,
+        )
+        # Remove the source short-term items now that they are summarized
         for item in items:
-            self.long_term.store(
-                content=item.content,
-                importance=item.importance,
-                metadata=item.metadata
-            )
-            count += 1
-        
-        return count
+            await self.db.delete_item(item.id, self.agent_id)
+        return len(items)
 
-    def clear(self, memory_type: Optional[str] = None) -> None:
-        """Clear memory."""
-        if memory_type is None or memory_type == "short":
-            self.short_term.clear()
-        # Long-term and semantic are persistent, don't clear
+    async def start_episode(self, context: str = "") -> None:
+        await self.episodic.start_episode(context)
 
-    def start_episode(self, context: str = "") -> None:
-        """Start a new episodic memory episode."""
-        self.episodic.start_episode(context)
+    async def end_episode(self, summary: str, **kwargs) -> str:
+        return await self.episodic.end_episode(summary, kwargs)
 
-    def end_episode(self, summary: str, **kwargs) -> str:
-        """End current episode."""
-        return self.episodic.end_episode(summary, kwargs)
+    async def clear(self) -> None:
+        await self.db.clear(self.agent_id, self.tenant_id)
 
-    def get_episode_history(self, limit: int = 10) -> List[Dict]:
-        """Get episode history."""
-        episodes = self.episodic.get_recent_episodes(limit)
-        return [
-            {
-                "id": e.id,
-                "summary": e.summary,
-                "start_time": e.start_time.isoformat(),
-                "end_time": e.end_time.isoformat(),
-                "event_count": len(e.events)
-            }
-            for e in episodes
-        ]
-
-    def store_fact(
-        self,
-        statement: str,
-        source: str,
-        tags: Optional[List[str]] = None,
-        **kwargs
-    ) -> str:
-        """Store a semantic fact."""
-        return self.semantic.store(statement, source, tags, **kwargs)
-
-    def recall_facts(
-        self,
-        query: str,
-        tags: Optional[List[str]] = None
-    ) -> List[Dict]:
-        """Recall semantic facts."""
-        facts = self.semantic.recall(query, tags)
-        return [
-            {
-                "id": f.id,
-                "statement": f.statement,
-                "source": f.source,
-                "confidence": f.confidence,
-                "tags": f.tags
-            }
-            for f in facts
-        ]
-
-    @property
-    def status(self) -> Dict[str, int]:
-        """Get memory system status."""
-        return {
-            "short_term_size": self.short_term.size,
-            "long_term_size": self.long_term.size,
-            "episodes_count": self.episodic.episode_count,
-            "facts_count": self.semantic.fact_count
-        }
+    async def status(self) -> Dict[str, int]:
+        return await self.db.stats(self.agent_id, self.tenant_id)

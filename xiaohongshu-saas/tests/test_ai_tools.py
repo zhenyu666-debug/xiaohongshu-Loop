@@ -133,3 +133,26 @@ async def test_execute_function():
     result = await registry.execute("double", x=5)
     assert result.success
     assert result.data == 10
+
+
+@pytest.mark.asyncio
+async def test_schedule_post_tool_returns_task_id():
+    """The tool must always return a task_id, even when APScheduler is unreachable."""
+    tool = SchedulePostTool()
+    result = await tool.execute(
+        account_id="acc1",
+        content={"title": "T"},
+        scheduled_time="2099-01-01T00:00:00",
+    )
+    assert result.success
+    assert "task_id" in result.data
+    assert result.data["status"] == "scheduled"
+
+
+@pytest.mark.asyncio
+async def test_search_trending_tool_returns_static_by_default():
+    tool = SearchTrendingTool()
+    result = await tool.execute(category="general", count=3)
+    assert result.success
+    assert len(result.data["trending"]) == 3
+    assert result.metadata["backend"] == "static"

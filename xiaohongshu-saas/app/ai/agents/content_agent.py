@@ -1,18 +1,17 @@
-"""Content creation agent for Xiaohongshu posts."""
+"""Content creation agent as a StateGraph: route -> plan -> generate -> review -> revise."""
 from __future__ import annotations
 
 import json
-from typing import List, Optional
+from typing import Any, Dict, Optional
 
 from app.ai.agents.base import AgentConfig, AgentMessage, AgentRole, BaseAgent
+from app.ai.agents.graph import END, StateGraph
 from app.ai.config import settings
-from app.ai.tools.registry import tool_registry
+from app.ai.llm import build_default_llm
+from app.ai.prompts.templates import load_prompt
 
 
-class ContentAgent(BaseAgent):
-    """Agent specialized in creating Xiaohongshu content."""
-
-    SYSTEM_PROMPT = """You are an expert Xiaohongshu content creator.
+SYSTEM_PROMPT = """You are an expert Xiaohongshu content creator.
 
 Your abilities:
 1. Analyze user needs and generate engaging titles
@@ -29,74 +28,135 @@ Writing style:
 
 Output format:
 ```json
-{
-  "title": "Title",
-  "body": "Content body",
-  "hashtags": ["#topic1", "#topic2"],
-  "tips": ["tip1", "tip2"]
-}
-```"""
+{"title": "...", "body": "...", "hashtags": ["..."], "tips": ["..."]}
+```
+"""
 
-    def __init__(self):
+
+REVIEW_PROMPT = """You are a strict Xiaohongshu content reviewer. Given the draft below,
+decide if it should be REVISED or APPROVED.
+
+Criteria for REVISED:
+- Title is missing or longer than 20 characters
+- Body lacks conversational tone
+- Fewer than 2 hashtags
+
+Reply with one word on the first line: REVISED or APPROVED.
+Then on a new line, one sentence of feedback.
+
+Draft:
+{draft}
+"""
+
+
+class ContentAgent(BaseAgent):
+    """StateGraph-backed content agent: 5-node graph with revise loop."""
+
+    def __init__(self, llm_provider: Optional[str] = None, llm_model: Optional[str] = None):
         super().__init__(AgentConfig(
             name="content_creator",
             role=AgentRole.EXECUTOR,
-            system_prompt=self.SYSTEM_PROMPT
+            system_prompt=SYSTEM_PROMPT,
         ))
-        self._register_tools()
+        self.llm_provider = llm_provider or settings.llm_provider
+        self.llm_model = llm_model or settings.default_model
 
-    def _register_tools(self):
-        """Register content-related tools."""
-        self.register_tool("search_trending", tool_registry.get("search_trending"))
-        self.register_tool("suggest_hashtags", tool_registry.get("suggest_hashtags"))
+    def build_graph(self) -> StateGraph:
+        graph = StateGraph()
 
-    async def think(self, context: List[AgentMessage]) -> str:
-        """Analyze the request and plan content creation."""
-        last_message = context[-1].content if context else ""
-        
-        # Simple keyword extraction
-        keywords = []
-        if "AI" in last_message or "ai" in last_message:
-            keywords.append("AI")
-        if "工具" in last_message:
-            keywords.append("工具")
-        if "小红书" in last_message:
-            keywords.append("小红书")
+        async def route(state: Dict[str, Any]) -> Dict[str, Any]:
+            topic = state.get("topic", "")
+            return {"topic": topic, "intent": "create"}
 
-        return f"Creating content about: {', '.join(keywords) if keywords else 'general topic'}"
+        async def plan(state: Dict[str, Any]) -> Dict[str, Any]:
+            return {
+                "style": state.get("style", "casual"),
+                "length": state.get("length", "medium"),
+                "plan": f"Write a Xiaohongshu post about {state['topic']}",
+            }
 
-    async def act(self, thought: str) -> List[AgentMessage]:
-        """Generate content based on thought."""
-        # This would normally call the LLM
-        response_content = json.dumps({
-            "title": "AI Tools Review",
-            "body": "Tried several AI writing tools recently...",
-            "hashtags": ["#AI", "#效率工具", "#小红书运营"],
-            "tips": ["Choose tools based on your needs", "AI is an assistant, not a replacement"]
-        }, ensure_ascii=False)
+        async def generate(state: Dict[str, Any]) -> Dict[str, Any]:
+            llm = build_default_llm(provider=self.llm_provider, model=self.llm_model)
+            prompt = load_prompt(
+                "content_creator",
+                topic=state["topic"],
+                style=state.get("style", "casual"),
+                length=state.get("length", "medium"),
+            )
+            response = await llm.ainvoke([
+                {"role": "system", "content": SYSTEM_PROMPT},
+                {"role": "user", "content": prompt},
+            ])
+            text = response.content
+            # Try to extract JSON
+            draft = _try_parse_json(text)
+            if draft is None:
+                draft = {"title": state["topic"][:18], "body": text, "hashtags": []}
+            state.setdefault("revisions", 0)
+            return {"draft": draft, "raw": text}
 
-        return [AgentMessage(
-            role="assistant",
-            content=response_content,
-            sender=self.name
-        )]
+        async def review(state: Dict[str, Any]) -> Dict[str, Any]:
+            llm = build_default_llm(provider=self.llm_provider, model=self.llm_model)
+            if self.llm_provider == "mock":
+                # Don't burn an LLM call in tests; treat any draft as approved.
+                return {"verdict": "APPROVED", "feedback": "(skipped in mock)"}
+            review_text = REVIEW_PROMPT.format(draft=json.dumps(state["draft"], ensure_ascii=False))
+            resp = await llm.ainvoke([{"role": "user", "content": review_text}])
+            verdict = "REVISED" if "REVISED" in resp.content.upper() else "APPROVED"
+            return {"verdict": verdict, "feedback": resp.content}
 
-    async def create_content(
-        self,
-        topic: str,
-        style: str = "casual",
-        length: str = "medium"
-    ) -> dict:
-        """Create content based on topic and preferences."""
-        prompt = f"""Create a Xiaohongshu post about: {topic}
-Style: {style}
-Length: {length}
-Return JSON with title, body, hashtags."""
-        
-        msg = AgentMessage(role="user", content=prompt, sender="user")
-        result = await self.run(msg)
-        
-        try:
-            return json.loads(result.content)
-        except json.JSONDecodeError:
-            return {"title": topic, "body": result.content, "hashtags": [], "tips": []}
+        async def revise(state: Dict[str, Any]) -> Dict[str, Any]:
+            return {"revisions": state.get("revisions", 0) + 1}
+
+        def route_to_revise_or_finish(state: Dict[str, Any]) -> str:
+            verdict = state.get("verdict", "APPROVED")
+            revisions = state.get("revisions", 0)
+            if verdict == "REVISED" and revisions < 2:
+                return "revise"
+            return "finish"
+
+        graph.add_node("route", route)
+        graph.add_node("plan", plan)
+        graph.add_node("generate", generate)
+        graph.add_node("review", review)
+        graph.add_node("revise", revise)
+
+        graph.set_entry_point("route")
+        graph.add_edge("route", "plan")
+        graph.add_edge("plan", "generate")
+        graph.add_edge("generate", "review")
+        graph.add_conditional_edges("review", route_to_revise_or_finish, {"revise": "revise", "finish": END()})
+        graph.add_edge("revise", "generate")
+        return graph
+
+    async def create_content(self, topic: str, style: str = "casual", length: str = "medium") -> dict:
+        graph = self.build_graph().compile()
+        result = await graph.ainvoke({"topic": topic, "style": style, "length": length})
+        return result.get("draft", {"title": topic, "body": "", "hashtags": []})
+
+    async def think(self, context):  # legacy hook
+        last = context[-1].content if context else ""
+        return f"Creating content for: {last}"
+
+    async def act(self, thought: str):  # legacy hook
+        return [AgentMessage(role="assistant", content=thought, sender=self.name)]
+
+
+def _try_parse_json(text: str) -> Optional[dict]:
+    text = text.strip()
+    # Strip markdown fences if present
+    if text.startswith("```"):
+        lines = text.splitlines()
+        text = "\n".join(l for l in lines if not l.startswith("```"))
+    try:
+        return json.loads(text)
+    except Exception:
+        # Find first {...} block
+        start = text.find("{")
+        end = text.rfind("}")
+        if start >= 0 and end > start:
+            try:
+                return json.loads(text[start : end + 1])
+            except Exception:
+                return None
+    return None

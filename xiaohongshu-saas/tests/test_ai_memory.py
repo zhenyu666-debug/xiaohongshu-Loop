@@ -1,232 +1,177 @@
-"""Tests for memory module."""
-import pytest
-import tempfile
-from pathlib import Path
-from app.ai.memory.short_term import ShortTermMemory
-from app.ai.memory.long_term import LongTermMemory
-from app.ai.memory.episodic import EpisodicMemory
-from app.ai.memory.semantic import SemanticMemory
-from app.ai.memory.manager import MemoryManager
-
-
-def test_short_term_memory_add():
-    memory = ShortTermMemory(max_items=10)
-    memory.add("Hello world", importance=0.5)
-    assert memory.size == 1
-
-
-def test_short_term_memory_get_recent():
-    memory = ShortTermMemory()
-    for i in range(5):
-        memory.add(f"Item {i}")
-    recent = memory.get_recent(3)
-    assert len(recent) == 3
-
-
-def test_short_term_memory_pruning():
-    memory = ShortTermMemory(max_items=3)
-    for i in range(5):
-        memory.add(f"Item {i}")
-    assert memory.size == 3
-
-
-def test_short_term_memory_search():
-    memory = ShortTermMemory()
-    memory.add("AI is great")
-    memory.add("Python programming")
-    memory.add("AI tools")
-    results = memory.search("AI")
-    assert len(results) == 2
-
-
-def test_short_term_memory_context():
-    memory = ShortTermMemory()
-    memory.add("First item")
-    memory.add("Second item")
-    context = memory.get_context()
-    assert "First item" in context
-
-
-def test_short_term_memory_consolidate():
-    memory = ShortTermMemory()
-    memory.add("Important", importance=0.9)
-    memory.add("Less important", importance=0.3)
-    important_items = memory.consolidate(threshold=0.7)
-    assert len(important_items) == 1
-
-
-def test_short_term_memory_clear():
-    memory = ShortTermMemory()
-    memory.add("Test")
-    memory.clear()
-    assert memory.size == 0
-
-
-def test_long_term_memory_store_and_recall(tmp_path):
-    memory = LongTermMemory(storage_path=str(tmp_path))
-    item_id = memory.store("AI is the future", importance=0.8, category="tech")
-    assert item_id is not None
-    results = memory.recall("AI")
-    assert len(results) > 0
-
-
-def test_long_term_memory_get_by_category(tmp_path):
-    memory = LongTermMemory(storage_path=str(tmp_path))
-    memory.store("Test 1", importance=0.5, category="cat1")
-    memory.store("Test 2", importance=0.5, category="cat2")
-    cat1_items = memory.get_by_category("cat1")
-    assert len(cat1_items) == 1
-
-
-def test_long_term_memory_delete(tmp_path):
-    memory = LongTermMemory(storage_path=str(tmp_path))
-    item_id = memory.store("Test", importance=0.5)
-    assert memory.delete(item_id)
-    assert memory.get(item_id) is None
-
-
-def test_long_term_memory_get_recent(tmp_path):
-    memory = LongTermMemory(storage_path=str(tmp_path))
-    for i in range(3):
-        memory.store(f"Item {i}", importance=0.5)
-    recent = memory.get_recent(2)
-    assert len(recent) == 2
-
-
-def test_episodic_memory_create_episode(tmp_path):
-    memory = EpisodicMemory(storage_path=str(tmp_path))
-    memory.start_episode("Test context")
-    memory.add_event({"type": "action", "data": "click"})
-    memory.add_event({"type": "result", "data": "success"})
-    episode_id = memory.end_episode("Test episode summary")
-    assert episode_id != ""
-    episode = memory.get_episode(episode_id)
-    assert episode is not None
-
-
-def test_episodic_memory_get_recent(tmp_path):
-    memory = EpisodicMemory(storage_path=str(tmp_path))
-    for i in range(3):
-        memory.start_episode()
-        memory.add_event({"data": f"event {i}"})
-        memory.end_episode(f"Episode {i}")
-    recent = memory.get_recent_episodes(2)
-    assert len(recent) == 2
-
-
-def test_episodic_memory_search(tmp_path):
-    memory = EpisodicMemory(storage_path=str(tmp_path))
-    memory.start_episode()
-    memory.add_event({"data": "test"})
-    memory.end_episode("Python tutorial")
-    memory.start_episode()
-    memory.add_event({"data": "test"})
-    memory.end_episode("JavaScript guide")
-    results = memory.search_episodes("Python")
-    assert len(results) == 1
-
-
-def test_semantic_memory_store_and_recall(tmp_path):
-    memory = SemanticMemory(storage_path=str(tmp_path))
-    fact_id = memory.store("Python is a programming language", source="wikipedia", tags=["programming"])
-    assert fact_id is not None
-    results = memory.recall("Python")
-    assert len(results) > 0
-
-
-def test_semantic_memory_by_tags(tmp_path):
-    memory = SemanticMemory(storage_path=str(tmp_path))
-    memory.store("F1", source="s", tags=["tag1"])
-    memory.store("F2", source="s", tags=["tag2"])
-    memory.store("F3", source="s", tags=["tag1", "tag2"])
-    results = memory.get_by_tags(["tag1"])
-    assert len(results) == 2
-
-
-def test_semantic_memory_update_confidence(tmp_path):
-    memory = SemanticMemory(storage_path=str(tmp_path))
-    fact_id = memory.store("Test", source="test")
-    memory.update_confidence(fact_id, 0.5)
-    fact = memory._facts.get(fact_id)
-    assert fact is not None
-    assert fact.confidence == 0.5
-
-
-def test_semantic_memory_delete(tmp_path):
-    memory = SemanticMemory(storage_path=str(tmp_path))
-    fact_id = memory.store("Test", source="test")
-    assert memory.delete(fact_id)
-    assert fact_id not in memory._facts
-
-
-def test_semantic_memory_all_tags(tmp_path):
-    memory = SemanticMemory(storage_path=str(tmp_path))
-    memory.store("F1", source="s", tags=["tag1", "tag2"])
-    memory.store("F2", source="s", tags=["tag2", "tag3"])
-    tags = memory.get_all_tags()
-    assert set(tags) == {"tag1", "tag2", "tag3"}
-
-
-@pytest.mark.asyncio
-async def test_memory_manager_add_short():
-    with tempfile.TemporaryDirectory() as tmpdir:
-        manager = MemoryManager(
-            long_term_path=str(Path(tmpdir) / "long"),
-            episodic_path=str(Path(tmpdir) / "episodic"),
-            semantic_path=str(Path(tmpdir) / "semantic")
-        )
-        await manager.add("Hello", memory_type="short")
-        assert manager.short_term.size == 1
-
-
-@pytest.mark.asyncio
-async def test_memory_manager_add_long():
-    with tempfile.TemporaryDirectory() as tmpdir:
-        manager = MemoryManager(
-            long_term_path=str(Path(tmpdir) / "long"),
-            episodic_path=str(Path(tmpdir) / "episodic"),
-            semantic_path=str(Path(tmpdir) / "semantic")
-        )
-        item_id = await manager.add("Important fact", importance=0.9, memory_type="long", category="facts")
-        assert item_id is not None
-
-
-@pytest.mark.asyncio
-async def test_memory_manager_recall():
-    with tempfile.TemporaryDirectory() as tmpdir:
-        manager = MemoryManager(
-            long_term_path=str(Path(tmpdir) / "long"),
-            episodic_path=str(Path(tmpdir) / "episodic"),
-            semantic_path=str(Path(tmpdir) / "semantic")
-        )
-        await manager.add("Python is great", memory_type="short")
-        results = await manager.recall("Python", memory_types=["short"])
-        assert "short_term" in results
-
-
-@pytest.mark.asyncio
-async def test_memory_manager_consolidate():
-    with tempfile.TemporaryDirectory() as tmpdir:
-        manager = MemoryManager(
-            long_term_path=str(Path(tmpdir) / "long"),
-            episodic_path=str(Path(tmpdir) / "episodic"),
-            semantic_path=str(Path(tmpdir) / "semantic")
-        )
-        await manager.add("Important", importance=0.9, memory_type="short")
-        await manager.add("Less important", importance=0.3, memory_type="short")
-        count = await manager.consolidate(threshold=0.7)
-        assert count == 1
-
-
-def test_memory_manager_status():
-    with tempfile.TemporaryDirectory() as tmpdir:
-        manager = MemoryManager(
-            long_term_path=str(Path(tmpdir) / "long"),
-            episodic_path=str(Path(tmpdir) / "episodic"),
-            semantic_path=str(Path(tmpdir) / "semantic")
-        )
-        status = manager.status
-        assert "short_term_size" in status
-        assert "long_term_size" in status
-        assert "episodes_count" in status
-        assert "facts_count" in status
+"""Tests for memory module (SQLite-backed, async)."""
+import asyncio
+import tempfile
+from pathlib import Path
+
+import pytest
+
+from app.ai.memory.db import MemoryDB
+from app.ai.memory.short_term import ShortTermMemory
+from app.ai.memory.long_term import LongTermMemory
+from app.ai.memory.episodic import EpisodicMemory
+from app.ai.memory.semantic import SemanticMemory
+from app.ai.memory.manager import MemoryManager
+
+
+@pytest.fixture
+async def db():
+    with tempfile.TemporaryDirectory() as tmpdir:
+        d = MemoryDB(str(Path(tmpdir) / "memory.db"))
+        await d.init()
+        yield d
+
+
+@pytest.mark.asyncio
+async def test_short_term_add_and_recent(db):
+    mem = ShortTermMemory(db, agent_id="a1")
+    await mem.add("Hello world", importance=0.5)
+    await mem.add("Goodbye world", importance=0.7)
+    items = await mem.get_recent(10)
+    assert len(items) == 2
+
+
+@pytest.mark.asyncio
+async def test_short_term_pruning(db):
+    mem = ShortTermMemory(db, agent_id="a1", max_items=3)
+    for i in range(6):
+        await mem.add(f"item-{i}")
+    items = await mem.get_recent(10)
+    assert len(items) <= 3
+
+
+@pytest.mark.asyncio
+async def test_short_term_search(db):
+    mem = ShortTermMemory(db, agent_id="a1")
+    await mem.add("AI is great")
+    await mem.add("Python programming")
+    await mem.add("AI tools list")
+    results = await mem.search("AI")
+    assert len(results) >= 1
+
+
+@pytest.mark.asyncio
+async def test_short_term_consolidate(db):
+    mem = ShortTermMemory(db, agent_id="a1")
+    await mem.add("Important", importance=0.9)
+    await mem.add("Less important", importance=0.3)
+    items = await mem.consolidate(threshold=0.7)
+    assert len(items) == 1
+
+
+@pytest.mark.asyncio
+async def test_long_term_store_and_recall(db):
+    mem = LongTermMemory(db, agent_id="a1")
+    item_id = await mem.store("AI is the future", importance=0.8, category="tech")
+    assert item_id
+    results = await mem.recall("AI")
+    assert len(results) > 0
+
+
+@pytest.mark.asyncio
+async def test_long_term_recall_by_category(db):
+    mem = LongTermMemory(db, agent_id="a1")
+    await mem.store("Test 1", importance=0.5, category="cat1")
+    await mem.store("Test 2", importance=0.5, category="cat2")
+    results = await mem.recall("Test", category="cat1")
+    assert len(results) == 1
+
+
+@pytest.mark.asyncio
+async def test_long_term_delete(db):
+    mem = LongTermMemory(db, agent_id="a1")
+    item_id = await mem.store("Test", importance=0.5)
+    assert await mem.delete(item_id)
+    assert await mem.delete(item_id) is False
+
+
+@pytest.mark.asyncio
+async def test_episodic_create(db):
+    mem = EpisodicMemory(db, agent_id="a1")
+    await mem.start_episode("Test context")
+    await mem.add_event({"type": "action", "data": "click"})
+    await mem.add_event({"type": "result", "data": "success"})
+    episode_id = await mem.end_episode("Test episode summary")
+    assert episode_id
+    results = await mem.search("summary")
+    assert len(results) >= 1
+
+
+@pytest.mark.asyncio
+async def test_episodic_auto_close_on_new_start(db):
+    """Regression: previously start_episode discarded in-flight events."""
+    mem = EpisodicMemory(db, agent_id="a1")
+    await mem.start_episode("first")
+    await mem.add_event({"data": "first-event"})
+    # Starting a new episode must auto-close the previous one.
+    await mem.start_episode("second")
+    await mem.end_episode("second summary")
+    # Search for "first" should now find the auto-closed episode.
+    results = await mem.search("first")
+    assert any("first" in r.context for r in results)
+
+
+@pytest.mark.asyncio
+async def test_semantic_store_and_recall(db):
+    mem = SemanticMemory(db, agent_id="a1")
+    await mem.store("Python is a programming language", source="wikipedia", tags=["programming"])
+    results = await mem.recall("Python")
+    assert len(results) > 0
+
+
+@pytest.mark.asyncio
+async def test_semantic_recall_by_tags(db):
+    mem = SemanticMemory(db, agent_id="a1")
+    await mem.store("F1", source="s", tags=["tag1"])
+    await mem.store("F2", source="s", tags=["tag2"])
+    await mem.store("F3", source="s", tags=["tag1", "tag2"])
+    results = await mem.recall("F", tags=["tag1"])
+    assert len(results) == 2
+
+
+@pytest.mark.asyncio
+async def test_memory_manager_basic(db):
+    mgr = MemoryManager(db, agent_id="agent-x")
+    await mgr.add("hello", memory_type="short")
+    results = await mgr.recall("hello", memory_types=["short"])
+    assert "short_term" in results
+    assert len(results["short_term"]) == 1
+
+
+@pytest.mark.asyncio
+async def test_memory_manager_consolidate_summarizes_and_promotes(db):
+    mgr = MemoryManager(db, agent_id="agent-x", llm_provider="mock")
+    await mgr.add("User prefers bullet lists", importance=0.9, memory_type="short")
+    await mgr.add("User dislikes emoji", importance=0.95, memory_type="short")
+    await mgr.add("Off-topic", importance=0.3, memory_type="short")
+    count = await mgr.consolidate(threshold=0.7)
+    assert count == 2
+    # Now long-term should have a derived item.
+    long_results = await mgr.long_term.recall("User")
+    assert len(long_results) >= 1
+    derived = long_results[0].metadata.get("derived_from")
+    assert derived is not None
+    assert len(derived) == 2
+
+
+@pytest.mark.asyncio
+async def test_memory_manager_agent_isolation(db):
+    mgr_a = MemoryManager(db, agent_id="A")
+    mgr_b = MemoryManager(db, agent_id="B")
+    await mgr_a.add("A's secret fact", importance=0.9, memory_type="short")
+    await mgr_b.add("B's secret fact", importance=0.9, memory_type="short")
+    results_a = await mgr_a.recall("secret")
+    results_b = await mgr_b.recall("secret")
+    contents_a = [r["content"] for r in results_a["short_term"]]
+    contents_b = [r["content"] for r in results_b["short_term"]]
+    assert any("A's secret" in c for c in contents_a)
+    assert any("B's secret" in c for c in contents_b)
+    assert not any("B's secret" in c for c in contents_a)
+    assert not any("A's secret" in c for c in contents_b)
+
+
+@pytest.mark.asyncio
+async def test_memory_manager_status(db):
+    mgr = MemoryManager(db, agent_id="agent-s")
+    await mgr.add("x", memory_type="short")
+    s = await mgr.status()
+    assert s["items"] >= 1

@@ -1,4 +1,10 @@
 """Tests for MCP protocol module."""
+import os
+import sys
+import tempfile
+
+import pytest
+
 from app.ai.mcp.protocol import (
     MCPMessage, MCPProtocol, MCPTool, MCPResource, MCPToolKind, get_mcp, initialize_mcp,
 )
@@ -18,7 +24,7 @@ def test_mcp_message_response():
 
 
 def test_mcp_message_error():
-    msg = MCPMessage.error(-32600, "Invalid Request", "123")
+    msg = MCPMessage.make_error(-32600, "Invalid Request", "123")
     assert msg.error == {"code": -32600, "message": "Invalid Request"}
 
 
@@ -151,3 +157,22 @@ def test_get_mcp_singleton():
 def test_initialize_mcp():
     mcp = initialize_mcp()
     assert mcp is not None
+
+
+@pytest.mark.asyncio
+async def test_mcp_in_process_round_trip():
+    """Exercise the protocol + transport helpers without spawning a subprocess."""
+    import json
+    from app.ai.mcp.protocol import MCPProtocol, MCPMessage, initialize_mcp
+
+    protocol = initialize_mcp()
+    msg = MCPMessage.request("tools/list")
+    response = protocol.handle_message(msg)
+    payload = json.dumps(response.to_dict())
+    parsed = json.loads(payload)
+    assert "result" in parsed
+    assert "tools" in parsed["result"]
+
+    # Round-trip through from_dict/to_dict
+    msg2 = MCPMessage.from_dict(parsed)
+    assert msg2.jsonrpc == "2.0"

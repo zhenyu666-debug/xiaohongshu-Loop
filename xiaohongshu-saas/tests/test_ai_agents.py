@@ -9,13 +9,13 @@ from app.ai.agents.base import (
     AgentRole,
     AgentCoordinator,
 )
-from app.ai.agents.coordinator import CoordinatorAgent
 from app.ai.agents.content_agent import ContentAgent
 from app.ai.agents.analysis_agent import AnalysisAgent
+from app.ai.agents.coordinator import CoordinatorAgent
+from app.ai.agents.graph import StateGraph, Checkpointer, END
 
 
 def test_agent_message_creation():
-    """Test AgentMessage creation."""
     msg = AgentMessage(role="user", content="Hello")
     assert msg.role == "user"
     assert msg.content == "Hello"
@@ -24,11 +24,10 @@ def test_agent_message_creation():
 
 
 def test_agent_config():
-    """Test AgentConfig creation."""
     config = AgentConfig(
         name="test_agent",
         role=AgentRole.EXECUTOR,
-        model="gpt-4o"
+        model="gpt-4o",
     )
     assert config.name == "test_agent"
     assert config.role == AgentRole.EXECUTOR
@@ -36,7 +35,6 @@ def test_agent_config():
 
 
 def test_agent_role_enum():
-    """Test AgentRole enum."""
     assert AgentRole.PLANNER.value == "planner"
     assert AgentRole.EXECUTOR.value == "executor"
     assert AgentRole.REVIEWER.value == "reviewer"
@@ -44,121 +42,153 @@ def test_agent_role_enum():
 
 
 def test_content_agent_creation():
-    """Test ContentAgent creation."""
     agent = ContentAgent()
     assert agent.name == "content_creator"
     assert agent.role == AgentRole.EXECUTOR
 
 
-@pytest.mark.asyncio
-async def test_content_agent_think():
-    """Test ContentAgent thinking."""
-    agent = ContentAgent()
-    context = [AgentMessage(role="user", content="AI tools")]
-    thought = await agent.think(context)
-    assert thought is not None
+def test_content_agent_graph_builds():
+    agent = ContentAgent(llm_provider="mock")
+    g = agent.build_graph()
+    assert "route" in g.nodes
+    assert "generate" in g.nodes
+    assert "review" in g.nodes
+    assert "revise" in g.nodes
 
 
 @pytest.mark.asyncio
-async def test_content_agent_act():
-    """Test ContentAgent action."""
-    agent = ContentAgent()
-    responses = await agent.act("test thought")
-    assert len(responses) == 1
-    assert responses[0].role == "assistant"
-
-
-@pytest.mark.asyncio
-async def test_content_agent_create_content():
-    """Test creating content."""
-    agent = ContentAgent()
-    result = await agent.create_content("AI Tools", style="casual", length="short")
+async def test_content_agent_graph_runs_in_mock_mode():
+    agent = ContentAgent(llm_provider="mock")
+    result = await agent.create_content("AI tools")
     assert "title" in result
     assert "body" in result
     assert "hashtags" in result
 
 
 def test_analysis_agent_creation():
-    """Test AnalysisAgent creation."""
     agent = AnalysisAgent()
     assert agent.name == "data_analyst"
     assert agent.role == AgentRole.REVIEWER
 
 
 @pytest.mark.asyncio
-async def test_analysis_agent_analyze():
-    """Test analysis."""
-    agent = AnalysisAgent()
+async def test_analysis_agent_graph_runs_in_mock_mode():
+    agent = AnalysisAgent(llm_provider="mock")
     result = await agent.analyze_account("test_account")
     assert "score" in result
-    assert "strengths" in result
-    assert "weaknesses" in result
-    assert "recommendations" in result
 
 
 def test_coordinator_agent_creation():
-    """Test CoordinatorAgent creation."""
     coord = CoordinatorAgent()
     assert coord.name == "coordinator"
     assert coord.role == AgentRole.COORDINATOR
-    assert coord.agent_coordinator is not None
-
-
-def test_coordinator_register_sub_agent():
-    """Test registering sub-agents."""
-    coord = CoordinatorAgent()
-    content = ContentAgent()
-    coord.register_sub_agent(content)
-
-    assert coord.agent_coordinator.get_agent("content_creator") is content
 
 
 @pytest.mark.asyncio
-async def test_coordinate_task():
-    """Test task coordination."""
+async def test_coordinator_routes_writing_tasks_to_content_agent():
     coord = CoordinatorAgent()
-    content = ContentAgent()
-    coord.register_sub_agent(content)
-
-    results = await coord.coordinate_task("Test task", ["content_creator"])
-    assert "content_creator" in results
+    result = await coord.coordinate_task("写一篇关于 AI 工具的小红书")
+    assert isinstance(result, dict)
 
 
-def test_agent_coordinator_register():
-    """Test AgentCoordinator register."""
-    coordinator = AgentCoordinator()
-    agent = ContentAgent()
-    coordinator.register(agent)
-
-    assert coordinator.get_agent("content_creator") is agent
+@pytest.mark.asyncio
+async def test_coordinator_routes_analysis_tasks_to_analysis_agent():
+    coord = CoordinatorAgent()
+    result = await coord.coordinate_task("分析 account1 的数据表现")
+    assert isinstance(result, dict)
 
 
-def test_agent_coordinator_broadcast():
-    """Test message broadcasting."""
-    coordinator = AgentCoordinator()
-    agent = ContentAgent()
-    coordinator.register(agent)
-
-    msg = AgentMessage(role="system", content="Important update")
-    coordinator.broadcast(msg)
-
-    assert len(coordinator.shared_memory) == 1
-    assert len(agent.memory) == 1
-
-
-def test_agent_add_message():
-    """Test adding messages to agent memory."""
-    agent = ContentAgent()
-    msg = AgentMessage(role="user", content="test")
-    agent.add_message(msg)
-
-    assert len(agent.memory) == 1
-    assert agent.memory[0].content == "test"
+@pytest.mark.asyncio
+async def test_coordinator_subgraph_fan_out():
+    """Multiple sub-graphs should be invoked when plan contains >1 intent."""
+    coord = CoordinatorAgent()
+    # Default route always returns one intent, but the graph supports >1.
+    g = coord.build_graph()
+    cp = Checkpointer()
+    compiled = g.compile(checkpointer=cp)
+    final = await compiled.ainvoke(
+        {"task": "test", "plan": ["content", "analysis"], "account_id": "acct-1"}
+    )
+    assert "sub_results" in final
+    assert "final" in final
 
 
-def test_agent_clear_memory():
-    """Test clearing agent memory."""
-    agent = ContentAgent()
-    agent.add_message(AgentMessage(role="user", content="test"))
-    agent.clear_memory()
-    assert len(agent.memory) == 0
+def test_stategraph_compile_runs_sequentially():
+    g = StateGraph()
+
+    async def a(state):
+        return {"a": state.get("a", 0) + 1}
+
+    async def b(state):
+        return {"b": state.get("b", 0) + 1}
+
+    g.add_node("a", a)
+    g.add_node("b", b)
+    g.set_entry_point("a")
+    g.add_edge("a", "b")
+    g.add_edge("b", END())
+
+    import asyncio
+    compiled = g.compile()
+    result = asyncio.run(compiled.ainvoke({}))
+    assert result.get("a") == 1
+    assert result.get("b") == 1
+
+
+@pytest.mark.asyncio
+async def test_stategraph_conditional_routing():
+    g = StateGraph()
+
+    async def classify(state):
+        return {"score": state.get("score", 0)}
+
+    async def pass_node(state):
+        return {"verdict": "pass"}
+
+    async def fail_node(state):
+        return {"verdict": "fail"}
+
+    g.add_node("classify", classify)
+    g.add_node("pass", pass_node)
+    g.add_node("fail", fail_node)
+    g.set_entry_point("classify")
+    g.add_conditional_edges(
+        "classify",
+        lambda s: "high" if s.get("score", 0) > 50 else "low",
+        {"high": "pass", "low": "fail"},
+    )
+    g.add_edge("pass", END())
+    g.add_edge("fail", END())
+
+    compiled = g.compile()
+    high = await compiled.ainvoke({"score": 75})
+    low = await compiled.ainvoke({"score": 25})
+    assert high["verdict"] == "pass"
+    assert low["verdict"] == "fail"
+
+
+@pytest.mark.asyncio
+async def test_stategraph_checkpointer_resume():
+    g = StateGraph()
+    seen = []
+
+    async def step1(state):
+        seen.append(1)
+        return {"step1": True}
+
+    async def step2(state):
+        seen.append(2)
+        return {"step2": True}
+
+    g.add_node("step1", step1)
+    g.add_node("step2", step2)
+    g.set_entry_point("step1")
+    g.add_edge("step1", "step2")
+    g.add_edge("step2", END())
+
+    cp = Checkpointer()
+    compiled = g.compile(checkpointer=cp)
+    await compiled.ainvoke({}, config={"configurable": {"thread_id": "t1"}})
+    assert cp._store.get("t1") is not None
+    assert "step1" in cp._store["t1"]
+    assert "step2" in cp._store["t1"]

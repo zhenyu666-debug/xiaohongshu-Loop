@@ -1,142 +1,121 @@
-"""Episodic memory for storing experience sequences."""
+"""Episodic memory: sequence of events as episodes.
+
+Key fix vs. the legacy implementation: ``start_episode()`` now auto-closes any
+in-flight episode (persisting it) before opening a new one. The legacy version
+silently dropped the previous episode's events on each ``start_episode`` call.
+"""
 from __future__ import annotations
 
-import json
+import time
+import uuid
 from dataclasses import dataclass, field
-from datetime import datetime
 from typing import Any, Dict, List, Optional
-from pathlib import Path
+
+from app.ai.memory.db import MemoryDB
 
 
 @dataclass
 class Episode:
-    """An episodic memory episode."""
     id: str
     events: List[Dict[str, Any]]
     summary: str
-    start_time: datetime
-    end_time: datetime
+    start_time: float
+    end_time: float
     context: str = ""
     metadata: Dict[str, Any] = field(default_factory=dict)
 
 
 class EpisodicMemory:
-    """Store sequences of experiences as episodes."""
+    """Episodic memory with auto-close on new start."""
 
-    def __init__(self, storage_path: str = "data/memory/episodes"):
-        self.storage_path = Path(storage_path)
-        self.storage_path.mkdir(parents=True, exist_ok=True)
-        self._episodes: Dict[str, Episode] = {}
-        self._current_episode: List[Dict[str, Any]] = []
-        self._episode_start: Optional[datetime] = None
-        self._load()
+    def __init__(
+        self,
+        db: MemoryDB,
+        agent_id: str = "default",
+        tenant_id: str = "default",
+    ):
+        self.db = db
+        self.agent_id = agent_id
+        self.tenant_id = tenant_id
+        self._current_events: List[Dict[str, Any]] = []
+        self._episode_start: Optional[float] = None
+        self._episode_context: str = ""
 
-    def _load(self) -> None:
-        """Load episodes from disk."""
-        for file_path in self.storage_path.glob("*.json"):
-            try:
-                with open(file_path, "r", encoding="utf-8") as f:
-                    data = json.load(f)
-                    episode = Episode(
-                        id=data["id"],
-                        events=data["events"],
-                        summary=data["summary"],
-                        start_time=datetime.fromisoformat(data["start_time"]),
-                        end_time=datetime.fromisoformat(data["end_time"]),
-                        context=data.get("context", ""),
-                        metadata=data.get("metadata", {})
-                    )
-                    self._episodes[episode.id] = episode
-            except Exception:
-                pass
-
-    def _save(self, episode: Episode) -> None:
-        """Save episode to disk."""
-        file_path = self.storage_path / f"{episode.id}.json"
-        with open(file_path, "w", encoding="utf-8") as f:
-            json.dump({
-                "id": episode.id,
-                "events": episode.events,
-                "summary": episode.summary,
-                "start_time": episode.start_time.isoformat(),
-                "end_time": episode.end_time.isoformat(),
-                "context": episode.context,
-                "metadata": episode.metadata
-            }, f, ensure_ascii=False, indent=2)
-
-    def start_episode(self, context: str = "") -> None:
-        """Start a new episode."""
-        import hashlib
-        self._current_episode = []
-        self._episode_start = datetime.now()
+    async def start_episode(self, context: str = "") -> None:
+        """Start a new episode. If a previous episode is still open, persist it first."""
+        if self._episode_start is not None and self._current_events:
+            await self.end_episode(
+                summary=self._episode_context or "(auto-closed)",
+                metadata={"auto_closed": True},
+            )
+        self._current_events = []
+        self._episode_start = time.time()
         self._episode_context = context
 
-    def add_event(self, event: Dict[str, Any]) -> None:
-        """Add an event to the current episode."""
-        event_with_time = {
-            **event,
-            "timestamp": datetime.now().isoformat()
-        }
-        self._current_episode.append(event_with_time)
+    async def add_event(self, event: Dict[str, Any]) -> None:
+        if self._episode_start is None:
+            await self.start_episode()
+        event_with_time = {**event, "timestamp": time.time()}
+        self._current_events.append(event_with_time)
 
-    def end_episode(self, summary: str, metadata: Optional[Dict[str, Any]] = None) -> str:
-        """End the current episode and store it."""
-        if not self._current_episode or not self._episode_start:
+    async def end_episode(
+        self,
+        summary: str,
+        metadata: Optional[Dict[str, Any]] = None,
+    ) -> str:
+        if self._episode_start is None:
             return ""
-        
-        import hashlib
-        episode_id = hashlib.md5(
-            f"{summary}{self._episode_start.isoformat()}".encode()
-        ).hexdigest()[:16]
-        
-        episode = Episode(
-            id=episode_id,
-            events=self._current_episode.copy(),
+        episode_id = uuid.uuid4().hex
+        await self.db.upsert_episode(
+            episode_id=episode_id,
+            agent_id=self.agent_id,
+            tenant_id=self.tenant_id,
             summary=summary,
+            context=self._episode_context,
+            events=self._current_events,
+            metadata=metadata or {},
             start_time=self._episode_start,
-            end_time=datetime.now(),
-            context=getattr(self, "_episode_context", ""),
-            metadata=metadata or {}
+            end_time=time.time(),
         )
-        
-        self._episodes[episode_id] = episode
-        self._save(episode)
-        
-        self._current_episode = []
+        self._current_events = []
         self._episode_start = None
-        
+        self._episode_context = ""
         return episode_id
 
-    def get_episode(self, episode_id: str) -> Optional[Episode]:
-        """Get an episode by ID."""
-        return self._episodes.get(episode_id)
-
-    def get_recent_episodes(self, limit: int = 10) -> List[Episode]:
-        """Get recent episodes."""
-        sorted_episodes = sorted(
-            self._episodes.values(),
-            key=lambda x: x.end_time,
-            reverse=True
+    async def search(self, query: str, limit: int = 10) -> List[Episode]:
+        episodes = await self.db.query_episodes(
+            agent_id=self.agent_id,
+            tenant_id=self.tenant_id,
+            limit=200,
         )
-        return sorted_episodes[:limit]
-
-    def search_episodes(self, query: str) -> List[Episode]:
-        """Search episodes by summary or context."""
-        query_lower = query.lower()
-        results = []
-        
-        for episode in self._episodes.values():
-            if (query_lower in episode.summary.lower() or
-                query_lower in episode.context.lower()):
-                results.append(episode)
-        
-        return results
-
-    def get_current_episode(self) -> List[Dict[str, Any]]:
-        """Get events from the current episode."""
-        return self._current_episode.copy()
+        q_lower = query.lower()
+        scored = []
+        for e in episodes:
+            score = 0
+            if q_lower in e["summary"].lower():
+                score += 2
+            if q_lower in e["context"].lower():
+                score += 1
+            for ev in e["events"]:
+                blob = str(ev).lower()
+                if q_lower in blob:
+                    score += 1
+                    break
+            scored.append((score, e))
+        scored.sort(key=lambda x: x[0], reverse=True)
+        return [
+            Episode(
+                id=e["id"],
+                events=e["events"],
+                summary=e["summary"],
+                start_time=e["start_time"],
+                end_time=e["end_time"],
+                context=e["context"],
+                metadata=e["metadata"],
+            )
+            for _, e in scored[:limit] if scored and scored[0][0] > 0
+        ] or []
 
     @property
     def episode_count(self) -> int:
-        """Get total number of episodes."""
-        return len(self._episodes)
+        return 0  # sync stub

@@ -1,82 +1,106 @@
-"""Analysis agent for account performance and content analytics."""
+"""Analysis agent as a StateGraph: plan -> query_rag -> synthesize -> format."""
 from __future__ import annotations
 
 import json
 from typing import Any, Dict, List, Optional
 
 from app.ai.agents.base import AgentConfig, AgentMessage, AgentRole, BaseAgent
+from app.ai.agents.graph import END, StateGraph
+from app.ai.config import settings
+from app.ai.llm import build_default_llm
+from app.ai.rag.rag_pipeline import build_default_rag_pipeline
 
 
-class AnalysisAgent(BaseAgent):
-    """Agent specialized in analyzing Xiaohongshu performance data."""
-
-    SYSTEM_PROMPT = """You are a data analysis expert focused on Xiaohongshu account operations.
-
-Analysis dimensions:
-1. Account health (follower growth, engagement rate, retention)
-2. Content performance (viral rate, watch time, conversion)
-3. Competitor comparison (differentiation strategy)
-4. Optimization recommendations (specific actionable items)
+ANALYSIS_SYSTEM = """You are a data analysis expert focused on Xiaohongshu account operations.
 
 Output format:
 ```json
-{
-  "score": 85,
-  "strengths": ["strength1", "strength2"],
-  "weaknesses": ["weakness1", "weakness2"],
-  "recommendations": [
-    {"action": "specific action", "expected_impact": "expected effect"}
-  ]
-}
-```"""
+{"score": 0-100, "strengths": [...], "weaknesses": [...], "recommendations": [...]}
+```
+"""
 
-    def __init__(self):
+
+class AnalysisAgent(BaseAgent):
+    """StateGraph-backed analysis agent that uses the RAG pipeline as a node."""
+
+    def __init__(self, llm_provider: Optional[str] = None, llm_model: Optional[str] = None, rag=None):
         super().__init__(AgentConfig(
             name="data_analyst",
             role=AgentRole.REVIEWER,
-            system_prompt=self.SYSTEM_PROMPT
+            system_prompt=ANALYSIS_SYSTEM,
         ))
+        self.llm_provider = llm_provider or settings.llm_provider
+        self.llm_model = llm_model or settings.default_model
+        self.rag = rag  # optional pre-built RAGPipeline
 
-    async def think(self, context: List[AgentMessage]) -> str:
-        """Analyze the data and identify patterns."""
-        last_message = context[-1].content if context else ""
-        return f"Analyzing data: {last_message[:100]}..."
+    def build_graph(self) -> StateGraph:
+        graph = StateGraph()
 
-    async def act(self, thought: str) -> List[AgentMessage]:
-        """Generate analysis report."""
-        response_content = json.dumps({
-            "score": 72,
-            "strengths": ["Accurate topic selection", "Regular posting schedule"],
-            "weaknesses": ["Low engagement rate", "Missing series content"],
-            "recommendations": [
-                {"action": "Add Q&A style content", "expected_impact": "Expected 15% engagement increase"}
-            ]
-        }, ensure_ascii=False)
+        async def plan(state: Dict[str, Any]) -> Dict[str, Any]:
+            return {"query": f"Performance analysis for account {state['account_id']}"}
 
-        return [AgentMessage(
-            role="assistant",
-            content=response_content,
-            sender=self.name
-        )]
+        async def query_rag(state: Dict[str, Any]) -> Dict[str, Any]:
+            pipeline = self.rag or build_default_rag_pipeline(provider=self.llm_provider, model=self.llm_model)
+            results = pipeline.retriever.retrieve(state["query"], top_k=3)
+            return {"context": [r.entry.metadata.get("text", "") for r in results]}
+
+        async def synthesize(state: Dict[str, Any]) -> Dict[str, Any]:
+            llm = build_default_llm(provider=self.llm_provider, model=self.llm_model)
+            if self.llm_provider == "mock":
+                return {
+                    "analysis": {
+                        "score": 72,
+                        "strengths": ["Accurate topic selection"],
+                        "weaknesses": ["Low engagement rate"],
+                        "recommendations": [{"action": "Add Q&A content", "expected_impact": "+15% engagement"}],
+                    }
+                }
+            prompt = (
+                f"Account: {state['account_id']}\n"
+                f"Context:\n" + "\n".join(state.get("context", []))
+                + "\n\nProvide the analysis in the specified JSON format."
+            )
+            response = await llm.ainvoke([
+                {"role": "system", "content": ANALYSIS_SYSTEM},
+                {"role": "user", "content": prompt},
+            ])
+            return {"analysis": _try_parse_json(response.content) or {"raw": response.content}}
+
+        graph.add_node("plan", plan)
+        graph.add_node("query_rag", query_rag)
+        graph.add_node("synthesize", synthesize)
+        graph.set_entry_point("plan")
+        graph.add_edge("plan", "query_rag")
+        graph.add_edge("query_rag", "synthesize")
+        graph.add_edge("synthesize", END())
+        return graph
 
     async def analyze_account(self, account_id: str, period: str = "7d") -> Dict[str, Any]:
-        """Analyze account performance."""
-        prompt = f"Analyze account {account_id} for period {period}."
-        msg = AgentMessage(role="user", content=prompt, sender="analysis")
-        result = await self.run(msg)
-        
-        try:
-            return json.loads(result.content)
-        except json.JSONDecodeError:
-            return {"error": "Failed to parse analysis result"}
+        graph = self.build_graph().compile()
+        result = await graph.ainvoke({"account_id": account_id, "period": period})
+        return result.get("analysis", {})
 
-    async def compare_content(self, post_ids: List[str]) -> Dict[str, Any]:
-        """Compare performance of multiple posts."""
-        prompt = f"Compare posts: {', '.join(post_ids)}"
-        msg = AgentMessage(role="user", content=prompt, sender="analysis")
-        result = await self.run(msg)
-        
-        try:
-            return json.loads(result.content)
-        except json.JSONDecodeError:
-            return {"error": "Failed to parse comparison result"}
+    async def think(self, context):  # legacy hook
+        last = context[-1].content if context else ""
+        return f"Analyzing data: {last[:100]}"
+
+    async def act(self, thought: str):  # legacy hook
+        return [AgentMessage(role="assistant", content=thought, sender=self.name)]
+
+
+def _try_parse_json(text: str) -> Optional[dict]:
+    text = text.strip()
+    if text.startswith("```"):
+        lines = text.splitlines()
+        text = "\n".join(l for l in lines if not l.startswith("```"))
+    try:
+        return json.loads(text)
+    except Exception:
+        start = text.find("{")
+        end = text.rfind("}")
+        if start >= 0 and end > start:
+            try:
+                return json.loads(text[start : end + 1])
+            except Exception:
+                return None
+    return None

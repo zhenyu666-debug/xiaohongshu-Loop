@@ -1,104 +1,102 @@
-"""Coordinator agent for orchestrating multi-agent workflows."""
+"""Coordinator agent: parent StateGraph that runs content + analysis as sub-graphs.
+
+This is the real multi-agent pattern: the parent graph has a fan-out node that
+sends each subtask to the appropriate sub-graph via ``Send``. Sub-graph outputs
+are merged in the synthesize node.
+"""
 from __future__ import annotations
 
+import asyncio
 import json
 from typing import Any, Dict, List, Optional
 
-from app.ai.agents.base import (
-    AgentConfig,
-    AgentMessage,
-    AgentRole,
-    AgentCoordinator,
-    BaseAgent,
-)
+from app.ai.agents.base import AgentConfig, AgentMessage, AgentRole, BaseAgent
+from app.ai.agents.graph import END, StateGraph
+from app.ai.agents.content_agent import ContentAgent
+from app.ai.agents.analysis_agent import AnalysisAgent
 
 
 class CoordinatorAgent(BaseAgent):
-    """Agent that coordinates other agents for complex tasks."""
-
-    SYSTEM_PROMPT = """You are a project coordinator that orchestrates multiple specialized agents.
-
-Your workflow:
-1. Understand the user's request
-2. Break down into subtasks
-3. Assign to appropriate agents
-4. Synthesize results
-5. Present final output
-
-Agents available:
-- content_creator: Create Xiaohongshu posts
-- data_analyst: Analyze performance data
-- scheduler: Optimize posting schedules
-
-Always provide clear, actionable responses."""
-
-    def __init__(self, coordinator: Optional[AgentCoordinator] = None):
+    def __init__(
+        self,
+        content_agent: Optional[ContentAgent] = None,
+        analysis_agent: Optional[AnalysisAgent] = None,
+    ):
         super().__init__(AgentConfig(
             name="coordinator",
             role=AgentRole.COORDINATOR,
-            system_prompt=self.SYSTEM_PROMPT
+            system_prompt="You are a coordinator orchestrating specialized sub-agents.",
         ))
-        self.agent_coordinator = coordinator or AgentCoordinator()
+        self.content_agent = content_agent or ContentAgent()
+        self.analysis_agent = analysis_agent or AnalysisAgent()
 
-    async def think(self, context: List[AgentMessage]) -> str:
-        """Analyze request and determine workflow."""
-        last_message = context[-1].content if context else ""
-        
-        # Simple routing logic
-        if "分析" in last_message or "数据" in last_message:
-            return "route_to:data_analyst"
-        elif "写" in last_message or "创作" in last_message:
-            return "route_to:content_creator"
-        else:
-            return "route_to:content_creator"
+    def route_intent(self, task: str) -> str:
+        t = task.lower()
+        if "分析" in task or "数据" in task or "analy" in t or "metric" in t:
+            return "analysis"
+        if "写" in task or "创作" in task or "writ" in t or "creat" in t:
+            return "content"
+        return "content"
 
-    async def act(self, thought: str) -> List[AgentMessage]:
-        """Execute the coordinated workflow."""
-        if thought.startswith("route_to:"):
-            agent_name = thought.split(":")[1]
-            return [AgentMessage(
-                role="assistant",
-                content=f"Routed to {agent_name}",
-                sender=self.name,
-                metadata={"action": "route", "agent": agent_name}
-            )]
-        
+    def build_graph(self) -> StateGraph:
+        graph = StateGraph()
+
+        async def plan(state: Dict[str, Any]) -> Dict[str, Any]:
+            intent = self.route_intent(state["task"])
+            return {"intent": intent, "plan": [intent]}
+
+        async def fan_out(state: Dict[str, Any]) -> Dict[str, Any]:
+            """Run sub-graphs in parallel for the intents in state['plan']."""
+            intents: List[str] = state["plan"]
+            tasks = []
+            for intent in intents:
+                if intent == "content":
+                    sub = self.content_agent.build_graph().compile()
+                    tasks.append(sub.ainvoke({
+                        "topic": state["task"],
+                        "style": "casual",
+                        "length": "medium",
+                    }))
+                elif intent == "analysis":
+                    sub = self.analysis_agent.build_graph().compile()
+                    tasks.append(sub.ainvoke({
+                        "account_id": state.get("account_id", "default"),
+                    }))
+            if not tasks:
+                return {"sub_results": []}
+            results = await asyncio.gather(*tasks)
+            return {"sub_results": results}
+
+        async def synthesize(state: Dict[str, Any]) -> Dict[str, Any]:
+            sub = state.get("sub_results", [])
+            merged: Dict[str, Any] = {}
+            for r in sub:
+                if isinstance(r, dict):
+                    merged.update(r)
+            return {"final": merged}
+
+        graph.add_node("plan", plan)
+        graph.add_node("fan_out", fan_out)
+        graph.add_node("synthesize", synthesize)
+        graph.set_entry_point("plan")
+        graph.add_edge("plan", "fan_out")
+        graph.add_edge("fan_out", "synthesize")
+        graph.add_edge("synthesize", END())
+        return graph
+
+    async def coordinate_task(self, task: str, account_id: Optional[str] = None) -> Dict[str, Any]:
+        graph = self.build_graph().compile()
+        result = await graph.ainvoke({"task": task, "account_id": account_id or "default"})
+        return result.get("final", {})
+
+    async def think(self, context):  # legacy hook
+        last = context[-1].content if context else ""
+        intent = self.route_intent(last)
+        return f"route_to:{intent}"
+
+    async def act(self, thought: str):  # legacy hook
         return [AgentMessage(
             role="assistant",
-            content="Task completed",
-            sender=self.name
+            content=f"routed: {thought}",
+            sender=self.name,
         )]
-
-    async def coordinate_task(
-        self,
-        task: str,
-        agents: List[str],
-        parallel: bool = False
-    ) -> Dict[str, Any]:
-        """Coordinate a task across multiple agents."""
-        results = {}
-        
-        if parallel:
-            # Run agents in parallel (simplified)
-            for agent_name in agents:
-                agent = self.agent_coordinator.get_agent(agent_name)
-                if agent:
-                    msg = AgentMessage(role="user", content=task, sender="coordinator")
-                    result = await agent.run(msg)
-                    results[agent_name] = result.content
-        else:
-            # Run agents in sequence
-            current_task = task
-            for agent_name in agents:
-                agent = self.agent_coordinator.get_agent(agent_name)
-                if agent:
-                    msg = AgentMessage(role="user", content=current_task, sender="coordinator")
-                    result = await agent.run(msg)
-                    results[agent_name] = result.content
-                    current_task = result.content
-
-        return results
-
-    def register_sub_agent(self, agent: BaseAgent) -> None:
-        """Register a sub-agent for coordination."""
-        self.agent_coordinator.register(agent)

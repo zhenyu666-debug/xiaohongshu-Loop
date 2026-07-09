@@ -1,140 +1,269 @@
-"""AI API routes."""
+"""AI API routes - real implementations backed by the M1-M5 stack."""
+from __future__ import annotations
+
+import os
+import tempfile
+from pathlib import Path
+from typing import Any, AsyncIterator, Dict, List, Optional
+
 from fastapi import APIRouter, HTTPException
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
-from typing import Any, Dict, List, Optional
+
+from app.ai.agents.coordinator import CoordinatorAgent
+from app.ai.agents.content_agent import ContentAgent
+from app.ai.agents.analysis_agent import AnalysisAgent
+from app.ai.memory.db import MemoryDB
+from app.ai.memory.manager import MemoryManager
+from app.ai.rag.document_loader import DocumentLoader
+from app.ai.rag.rag_pipeline import build_default_rag_pipeline
+from app.ai.rag.text_splitter import TextSplitter
+from app.ai.tools.registry import tool_registry
+from app.ai.tools.content_tools import register_content_tools
+from app.ai.tools.scheduler_tools import register_scheduler_tools
+from app.ai.tools.search_tools import register_search_tools
+
 
 router = APIRouter(prefix="/ai", tags=["AI"])
 
 
+# Auto-register tools so /api/ai/tools is always populated.
+def _ensure_tools_registered() -> None:
+    if not tool_registry.list_tools():
+        register_content_tools()
+        register_scheduler_tools()
+        register_search_tools()
+
+
+_ensure_tools_registered()
+
+
+def _memory_db_path() -> str:
+    base = os.environ.get("AI_MEMORY_PATH", "data/ai_memory.sqlite")
+    Path(base).parent.mkdir(parents=True, exist_ok=True)
+    return base
+
+
+async def _memory_manager(agent_id: str = "default", tenant_id: str = "default") -> MemoryManager:
+    db = MemoryDB(_memory_db_path())
+    await db.init()
+    return MemoryManager(db, agent_id=agent_id, tenant_id=tenant_id)
+
+
+# ---------- Schemas ----------
+
 class ChatRequest(BaseModel):
-    """Chat request."""
     message: str
     agent: str = "coordinator"
-    context: Optional[Dict[str, Any]] = None
+    account_id: Optional[str] = None
 
 
 class ChatResponse(BaseModel):
-    """Chat response."""
     response: str
     agent: str
     metadata: Dict[str, Any] = Field(default_factory=dict)
 
 
+class ChatStreamRequest(ChatRequest):
+    pass
+
+
+class IngestRequest(BaseModel):
+    path: str
+    persist: bool = True
+
+
+class IngestResponse(BaseModel):
+    chunks: int
+    documents: int
+    source: str
+
+
 class RAGQueryRequest(BaseModel):
-    """RAG query request."""
     question: str
     top_k: int = 5
-    include_sources: bool = True
+    agent_id: str = "default"
 
 
 class RAGQueryResponse(BaseModel):
-    """RAG query response."""
     answer: str
     sources: List[Dict[str, Any]] = Field(default_factory=list)
     confidence: float
 
 
-class MemoryRequest(BaseModel):
-    """Memory operation request."""
-    action: str = Field(..., description="Action: add, recall, clear")
-    content: Optional[str] = None
+class MemoryAddRequest(BaseModel):
+    content: str
     memory_type: str = "short"
     importance: float = 0.5
+    agent_id: str = "default"
+    tenant_id: str = "default"
+
+
+class MemoryRecallRequest(BaseModel):
+    query: str
+    memory_types: List[str] = Field(default_factory=lambda: ["short", "long", "semantic"])
+    agent_id: str = "default"
+    tenant_id: str = "default"
 
 
 class MemoryResponse(BaseModel):
-    """Memory operation response."""
     success: bool
     data: Any = None
     message: str = ""
 
 
 class ToolCallRequest(BaseModel):
-    """Tool call request."""
     tool_name: str
     arguments: Dict[str, Any] = Field(default_factory=dict)
 
 
 class ToolCallResponse(BaseModel):
-    """Tool call response."""
     success: bool
     result: Any = None
     error: Optional[str] = None
 
 
-# Mock responses for demo
+# ---------- Routes ----------
+
 @router.post("/chat", response_model=ChatResponse)
 async def chat(request: ChatRequest) -> ChatResponse:
-    """Chat with an AI agent."""
-    # This would normally route to the appropriate agent
+    """Route a task to the appropriate agent graph and persist the exchange."""
+    if request.agent == "content_creator":
+        agent = ContentAgent()
+        result = await agent.create_content(request.message)
+        return ChatResponse(
+            response=result.get("body") or str(result),
+            agent=request.agent,
+            metadata={"draft": result},
+        )
+    if request.agent == "data_analyst":
+        agent = AnalysisAgent()
+        result = await agent.analyze_account(request.account_id or "default")
+        return ChatResponse(
+            response=str(result),
+            agent=request.agent,
+            metadata={"analysis": result},
+        )
+    coord = CoordinatorAgent()
+    final = await coord.coordinate_task(request.message, account_id=request.account_id)
     return ChatResponse(
-        response=f"Processed by {request.agent}: {request.message}",
-        agent=request.agent,
-        metadata={"status": "success"}
+        response=str(final),
+        agent="coordinator",
+        metadata={"final": final},
+    )
+
+
+@router.post("/chat/stream")
+async def chat_stream(request: ChatStreamRequest) -> StreamingResponse:
+    """Stream the RAG answer as Server-Sent Events."""
+    pipeline = build_default_rag_pipeline()
+    pipeline.index_documents([
+        {"content": "Streaming demo doc", "source": "demo"},
+        {"content": request.message, "source": "user-input"},
+    ])
+
+    async def event_source() -> AsyncIterator[str]:
+        async for token in pipeline.query_stream(request.message, top_k=3):
+            yield f"data: {token}\n\n"
+        yield "data: [DONE]\n\n"
+
+    return StreamingResponse(event_source(), media_type="text/event-stream")
+
+
+@router.post("/ingest", response_model=IngestResponse)
+async def ingest(request: IngestRequest) -> IngestResponse:
+    """Load documents from a directory and index them into the default RAG pipeline."""
+    src = Path(request.path)
+    if not src.exists():
+        raise HTTPException(status_code=404, detail=f"path not found: {request.path}")
+    loader = DocumentLoader()
+    docs = loader.load(request.path)
+    splitter = TextSplitter()
+    chunks = splitter.split_documents(docs)
+    pipeline = build_default_rag_pipeline()
+    pipeline.index_documents([
+        {"content": c.content, "source": c.metadata.get("source", request.path)}
+        for c in chunks
+    ])
+    return IngestResponse(
+        chunks=len(chunks),
+        documents=len(docs),
+        source=request.path,
     )
 
 
 @router.post("/rag/query", response_model=RAGQueryResponse)
 async def rag_query(request: RAGQueryRequest) -> RAGQueryResponse:
-    """Query the RAG system."""
+    pipeline = build_default_rag_pipeline()
+    result = await pipeline.query(request.question, top_k=request.top_k)
     return RAGQueryResponse(
-        answer=f"Answer to: {request.question}",
-        sources=[{"text": "Sample source", "score": 0.9}],
-        confidence=0.85
+        answer=result.answer,
+        sources=result.sources,
+        confidence=result.confidence,
     )
 
 
-@router.post("/memory", response_model=MemoryResponse)
-async def memory_operation(request: MemoryRequest) -> MemoryResponse:
-    """Operate on memory."""
-    if request.action == "add" and request.content:
-        return MemoryResponse(
-            success=True,
-            message=f"Added to {request.memory_type} memory"
-        )
-    elif request.action == "recall":
-        return MemoryResponse(
-            success=True,
-            data={"items": []},
-            message="Recalled from memory"
-        )
-    elif request.action == "clear":
-        return MemoryResponse(success=True, message="Memory cleared")
-    return MemoryResponse(success=False, message="Unknown action")
+@router.post("/memory/add", response_model=MemoryResponse)
+async def memory_add(request: MemoryAddRequest) -> MemoryResponse:
+    mgr = await _memory_manager(agent_id=request.agent_id, tenant_id=request.tenant_id)
+    item_id = await mgr.add(
+        content=request.content,
+        importance=request.importance,
+        memory_type=request.memory_type,
+    )
+    return MemoryResponse(success=True, data={"id": item_id}, message="added")
+
+
+@router.post("/memory/recall", response_model=MemoryResponse)
+async def memory_recall(request: MemoryRecallRequest) -> MemoryResponse:
+    mgr = await _memory_manager(agent_id=request.agent_id, tenant_id=request.tenant_id)
+    results = await mgr.recall(request.query, memory_types=request.memory_types)
+    return MemoryResponse(success=True, data=results, message="recalled")
+
+
+@router.post("/memory/consolidate", response_model=MemoryResponse)
+async def memory_consolidate(request: MemoryAddRequest) -> MemoryResponse:
+    mgr = await _memory_manager(agent_id=request.agent_id, tenant_id=request.tenant_id)
+    count = await mgr.consolidate(threshold=request.importance)
+    return MemoryResponse(success=True, data={"consolidated": count}, message="consolidated")
 
 
 @router.post("/tools/call", response_model=ToolCallResponse)
 async def call_tool(request: ToolCallRequest) -> ToolCallResponse:
-    """Call a tool."""
+    _ensure_tools_registered()
+    result = await tool_registry.execute(request.tool_name, **request.arguments)
     return ToolCallResponse(
-        success=True,
-        result={"executed": request.tool_name}
+        success=result.success,
+        result=result.data,
+        error=result.error,
     )
 
 
 @router.get("/tools")
 async def list_tools() -> Dict[str, List[Dict[str, Any]]]:
-    """List available tools."""
-    return {"tools": []}
+    _ensure_tools_registered()
+    return {"tools": tool_registry.get_all_definitions()}
 
 
 @router.get("/agents")
 async def list_agents() -> Dict[str, List[str]]:
-    """List available agents."""
     return {"agents": ["coordinator", "content_creator", "data_analyst"]}
 
 
 @router.get("/status")
 async def ai_status() -> Dict[str, Any]:
-    """Get AI system status."""
+    _ensure_tools_registered()
     return {
         "status": "running",
-        "version": "1.0.0",
+        "version": "2.0.0",
         "features": {
+            "langgraph": True,
             "rag": True,
-            "agents": True,
-            "tools": True,
-            "memory": True,
-            "mcp": True
-        }
+            "pdf_docx_ingest": True,
+            "streaming": True,
+            "memory_sqlite": True,
+            "mcp_stdio": True,
+            "cross_encoder_rerank": True,
+        },
+        "tools_registered": len(tool_registry.list_tools()),
     }

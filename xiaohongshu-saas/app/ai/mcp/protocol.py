@@ -98,7 +98,7 @@ class MCPMessage:
         )
 
     @classmethod
-    def error(
+    def make_error(
         cls,
         code: int,
         message: str,
@@ -163,7 +163,7 @@ class MCPProtocol:
     def handle_message(self, message: MCPMessage) -> MCPMessage:
         """Handle an MCP message."""
         if message.method is None:
-            return MCPMessage.error(-32600, "Invalid Request", message.id)
+            return MCPMessage.make_error(-32600, "Invalid Request", message.id)
 
         # Built-in methods
         if message.method == "tools/list":
@@ -186,9 +186,9 @@ class MCPProtocol:
                 result = handler(message.params or {})
                 return MCPMessage.response(result, message.id or "")
             except Exception as e:
-                return MCPMessage.error(-32603, str(e), message.id)
+                return MCPMessage.make_error(-32603, str(e), message.id)
 
-        return MCPMessage.error(-32601, f"Method not found: {message.method}", message.id)
+        return MCPMessage.make_error(-32601, f"Method not found: {message.method}", message.id)
 
     def _handle_list_tools(self, message: MCPMessage) -> MCPMessage:
         """Handle tools/list."""
@@ -201,7 +201,7 @@ class MCPProtocol:
         tool_name = params.get("name")
         
         if tool_name not in self.tools:
-            return MCPMessage.error(-32602, f"Tool not found: {tool_name}", message.id)
+            return MCPMessage.make_error(-32602, f"Tool not found: {tool_name}", message.id)
         
         tool = self.tools[tool_name]
         arguments = params.get("arguments", {})
@@ -213,7 +213,7 @@ class MCPProtocol:
                 result = handler(arguments)
                 return MCPMessage.response({"content": result}, message.id or "")
             except Exception as e:
-                return MCPMessage.error(-32603, str(e), message.id)
+                return MCPMessage.make_error(-32603, str(e), message.id)
         
         return MCPMessage.response({"content": f"Tool {tool_name} executed"}, message.id or "")
 
@@ -228,7 +228,7 @@ class MCPProtocol:
         uri = params.get("uri")
         
         if uri not in self.resources:
-            return MCPMessage.error(-32602, f"Resource not found: {uri}", message.id)
+            return MCPMessage.make_error(-32602, f"Resource not found: {uri}", message.id)
         
         resource = self.resources[uri]
         return MCPMessage.response({
@@ -254,7 +254,7 @@ class MCPProtocol:
         from app.ai.prompts.templates import load_prompt, get_template
         template = get_template(name)
         if not template:
-            return MCPMessage.error(-32602, f"Prompt not found: {name}", message.id)
+            return MCPMessage.make_error(-32602, f"Prompt not found: {name}", message.id)
         
         prompt_text = template.render(**arguments)
         return MCPMessage.response({
