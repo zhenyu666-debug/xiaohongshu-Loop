@@ -10,8 +10,9 @@ class Selectors:
     # The actual publisher shows at /publish/publish?target=image after we click
     # "发布图文笔记" on the dashboard. The title field is the most reliable marker.
     PUBLISH_TAB = 'input[placeholder^="填写标题"], input[placeholder*="标题"]'
-    FILE_INPUT = "input[type=file][accept^='image']"
-    VIDEO_FILE_INPUT = "input[type=file][accept^='video']"
+    # FILE_INPUT: primary selector + fallback for XHS UI updates (input.upload-input)
+    FILE_INPUT = "input[type=file][accept^='image'], input.upload-input"
+    VIDEO_FILE_INPUT = "input[type=file][accept^='video'], input.upload-input"
     UPLOAD_PROGRESS_DONE = ".upload-progress[aria-valuenow='100'], .upload-done, text=上传完成"
 
     TITLE_INPUT = "input[placeholder^='填写标题']"
