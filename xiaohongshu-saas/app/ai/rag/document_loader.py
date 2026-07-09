@@ -7,6 +7,25 @@ from typing import Callable, Dict, List, Optional
 from dataclasses import dataclass
 
 
+# Encodings to try when reading a text-like file. We try UTF-8 first (with BOM
+# stripped), then GBK (the dominant Windows Chinese encoding), then latin-1
+# as a last resort that never raises.
+_TEXT_ENCODING_CANDIDATES = ("utf-8-sig", "utf-8", "gbk", "gb18030", "big5", "latin-1")
+
+
+def _read_text_with_fallback(path: str) -> str:
+    """Read a text file, trying common encodings until one decodes cleanly."""
+    with open(path, "rb") as f:
+        raw = f.read()
+    for enc in _TEXT_ENCODING_CANDIDATES:
+        try:
+            return raw.decode(enc)
+        except UnicodeDecodeError:
+            continue
+    # Should be unreachable: latin-1 accepts any byte. Be paranoid anyway.
+    return raw.decode("utf-8", errors="replace")
+
+
 @dataclass
 class Document:
     """A loaded document."""
@@ -23,15 +42,13 @@ class BaseLoader(ABC):
 
 class TextLoader(BaseLoader):
     def load(self, path: str) -> List[Document]:
-        with open(path, "r", encoding="utf-8") as f:
-            content = f.read()
+        content = _read_text_with_fallback(path)
         return [Document(content=content, metadata={"source": path, "type": "text"}, source=path)]
 
 
 class MarkdownLoader(BaseLoader):
     def load(self, path: str) -> List[Document]:
-        with open(path, "r", encoding="utf-8") as f:
-            content = f.read()
+        content = _read_text_with_fallback(path)
         return [Document(content=content, metadata={"source": path, "type": "markdown"}, source=path)]
 
 
