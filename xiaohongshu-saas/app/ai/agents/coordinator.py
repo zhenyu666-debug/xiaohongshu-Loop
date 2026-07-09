@@ -42,6 +42,19 @@ class CoordinatorAgent(BaseAgent):
         graph = StateGraph()
 
         async def plan(state: Dict[str, Any]) -> Dict[str, Any]:
+            """Decide which sub-graphs to invoke.
+
+            If the caller provided an explicit ``plan`` list (multi-intent
+            fan-out), respect it. Otherwise fall back to a single intent
+            chosen by ``route_intent``.
+
+            Note: only honor a non-empty *list* here. The StateGraph shim
+            checkpointer restores prior state on resume, and we do not want
+            a previously-stored "plan" to silently shadow a new request.
+            """
+            existing = state.get("plan")
+            if isinstance(existing, list) and existing:
+                return {"intent": list(existing), "plan": list(existing)}
             intent = self.route_intent(state["task"])
             return {"intent": intent, "plan": [intent]}
 

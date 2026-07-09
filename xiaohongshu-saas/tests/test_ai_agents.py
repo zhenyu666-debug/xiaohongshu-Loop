@@ -100,17 +100,38 @@ async def test_coordinator_routes_analysis_tasks_to_analysis_agent():
 
 @pytest.mark.asyncio
 async def test_coordinator_subgraph_fan_out():
-    """Multiple sub-graphs should be invoked when plan contains >1 intent."""
+    """When the caller passes an explicit multi-intent plan, all sub-graphs run."""
     coord = CoordinatorAgent()
-    # Default route always returns one intent, but the graph supports >1.
     g = coord.build_graph()
     cp = Checkpointer()
     compiled = g.compile(checkpointer=cp)
     final = await compiled.ainvoke(
-        {"task": "test", "plan": ["content", "analysis"], "account_id": "acct-1"}
+        {
+            "task": "test",
+            "plan": ["content", "analysis"],
+            "account_id": "acct-1",
+        }
     )
-    assert "sub_results" in final
-    assert "final" in final
+    # Both sub-graphs must have run.
+    sub_results = final.get("sub_results", [])
+    assert len(sub_results) == 2, f"expected 2 sub-results, got {len(sub_results)}"
+    merged = final.get("final", {})
+    # Content graph contributes 'draft'; analysis graph contributes 'analysis'.
+    assert "draft" in merged, f"missing 'draft' in merge: keys={sorted(merged.keys())}"
+    assert "analysis" in merged, f"missing 'analysis' in merge: keys={sorted(merged.keys())}"
+
+
+@pytest.mark.asyncio
+async def test_coordinator_default_route_single_intent():
+    """Without an explicit plan, the router picks ONE intent and runs ONE sub-graph."""
+    coord = CoordinatorAgent()
+    g = coord.build_graph()
+    # No checkpointer so we get a clean state every call.
+    compiled = g.compile()
+    final = await compiled.ainvoke({"task": "分析 account1 的数据表现", "account_id": "acct-1"})
+    sub_results = final.get("sub_results", [])
+    assert len(sub_results) == 1, f"expected single intent, got {len(sub_results)}"
+    assert "analysis" in final.get("final", {}), "default analysis route should produce 'analysis'"
 
 
 def test_stategraph_compile_runs_sequentially():
