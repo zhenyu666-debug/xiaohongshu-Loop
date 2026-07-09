@@ -1,80 +1,56 @@
-import { useEffect, useRef, useState } from "react";
+import { useState, useEffect, useCallback } from "react";
 
-export interface SSEEvent<T = unknown> {
-  data: T;
-  raw: string;
-  event: string;
-  id?: string;
+export interface SSEEvent {
+  type: string;
+  data: unknown;
+  timestamp: string;
 }
 
-export function useSSE<T = unknown>(url: string | null, opts?: { onEvent?: (e: SSEEvent<T>) => void }) {
+export function useSSE(url: string, enabled: boolean = true) {
+  const [events, setEvents] = useState<SSEEvent[]>([]);
   const [connected, setConnected] = useState(false);
-  const [lastError, setLastError] = useState<Error | null>(null);
-  const [events, setEvents] = useState<SSEEvent<T>[]>([]);
-  const optsRef = useRef(opts);
-  optsRef.current = opts;
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    if (!url) return;
-    const ctrl = new AbortController();
-    let alive = true;
+    if (!enabled) return;
 
-    (async () => {
-      while (alive) {
+    let eventSource: EventSource | null = null;
+    let reconnectTimeout: ReturnType<typeof setTimeout> | null = null;
+
+    const connect = () => {
+      eventSource = new EventSource(url);
+
+      eventSource.onopen = () => {
+        setConnected(true);
+        setError(null);
+      };
+
+      eventSource.onmessage = (event) => {
         try {
-          const r = await fetch(url, {
-            headers: { Accept: "text/event-stream" },
-            signal: ctrl.signal,
-          });
-          if (!r.ok || !r.body) throw new Error(`SSE ${r.status}`);
-          setConnected(true);
-          setLastError(null);
-          const reader = r.body.getReader();
-          const decoder = new TextDecoder();
-          let buf = "";
-          while (alive) {
-            const { value, done } = await reader.read();
-            if (done) break;
-            buf += decoder.decode(value, { stream: true });
-            const blocks = buf.split("\n\n");
-            buf = blocks.pop() ?? "";
-            for (const block of blocks) {
-              if (!block) continue;
-              let event = "message";
-              let data = "";
-              const lines = block.split("\n");
-              for (const line of lines) {
-                if (line.startsWith(":")) continue;
-                if (line.startsWith("data:")) data += line.slice(5).trim();
-                else if (line.startsWith("event:")) event = line.slice(6).trim();
-              }
-              if (!data) continue;
-              let parsed: unknown = data;
-              try {
-                parsed = JSON.parse(data);
-              } catch {
-                /* leave as string */
-              }
-              const evt: SSEEvent<T> = { data: parsed as T, raw: data, event };
-              setEvents((prev) => [evt, ...prev].slice(0, 200));
-              optsRef.current?.onEvent?.(evt);
-            }
-          }
-        } catch (e) {
-          if (!alive) break;
-          setConnected(false);
-          setLastError(e instanceof Error ? e : new Error(String(e)));
-          await new Promise((res) => setTimeout(res, 2000));
+          const data = JSON.parse(event.data);
+          setEvents((prev) => [...prev.slice(-99), { type: "message", data, timestamp: new Date().toISOString() }]);
+        } catch {
+          setEvents((prev) => [...prev.slice(-99), { type: "message", data: event.data, timestamp: new Date().toISOString() }]);
         }
-      }
-    })();
+      };
+
+      eventSource.onerror = () => {
+        setConnected(false);
+        setError("SSE connection lost");
+        eventSource?.close();
+        reconnectTimeout = setTimeout(connect, 3000);
+      };
+    };
+
+    connect();
 
     return () => {
-      alive = false;
-      ctrl.abort();
-      setConnected(false);
+      if (reconnectTimeout) clearTimeout(reconnectTimeout);
+      eventSource?.close();
     };
-  }, [url]);
+  }, [url, enabled]);
 
-  return { connected, lastError, events };
+  const clearEvents = useCallback(() => setEvents([]), []);
+
+  return { events, connected, error, clearEvents };
 }

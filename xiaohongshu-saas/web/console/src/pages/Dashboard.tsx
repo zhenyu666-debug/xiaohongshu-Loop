@@ -1,121 +1,109 @@
-import { useQuery } from "@tanstack/react-query";
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
-import { Skeleton } from "@/components/ui/skeleton";
-import { Table, TableHeader, TableHead, TableBody, TableRow, TableCell } from "@/components/ui/table";
-import api from "@/lib/api";
-import { formatDate, formatNumber } from "@/lib/utils";
-import type { DashboardSummary } from "@/types/api";
+import { useUIStore } from "@/hooks/useUIStore";
+import { TabNav } from "@/components/layout/TabNav";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge-extra";
+import { useLauncherStatus } from "@/hooks/useLauncherStatus";
 
-export default function Dashboard() {
-  const { data, isLoading, isError, error } = useQuery({
-    queryKey: ["dashboard", "summary"],
-    queryFn: async () => (await api.get<DashboardSummary>("/dashboard/summary")).data,
-    refetchInterval: 30_000,
-  });
+const SERVICE_CONFIG = [
+  { name: "xhs-saas", label: "小红书 SaaS", color: "#34d399" },
+  { name: "pbp-api", label: "供体筛选 API", color: "#38bdf8" },
+  { name: "lakehouse-api", label: "数据湖仓 API", color: "#a78bfa" },
+];
 
-  if (isError) {
-    return (
-      <Card className="border-destructive/50 bg-destructive/5">
-        <CardHeader>
-          <CardTitle className="text-destructive">无法连接后端</CardTitle>
-          <CardDescription>{(error as Error)?.message ?? "未知错误"}</CardDescription>
-        </CardHeader>
-      </Card>
-    );
-  }
-
-  const kpis = data
-    ? [
-        { label: "账号总数", value: data.total_accounts },
-        { label: "活跃账号", value: data.active_accounts },
-        { label: "任务总数", value: data.total_tasks },
-        { label: "待执行", value: data.pending_tasks },
-        { label: "执行中", value: data.running_tasks },
-      ]
-    : [];
+export function Dashboard() {
+  const { darkMode } = useUIStore();
+  const { status, error } = useLauncherStatus();
 
   return (
     <div className="space-y-6">
-      <div>
-        <h2 className="text-2xl font-semibold tracking-tight">概览</h2>
-        <p className="text-sm text-muted-foreground">账号 / 任务 / 发布 实时状态</p>
+      <div className="flex items-center justify-between">
+        <h2 className="text-xl font-semibold">概览</h2>
+        <TabNav />
       </div>
 
-      <div className="grid grid-cols-2 gap-4 md:grid-cols-3 lg:grid-cols-5">
-        {isLoading
-          ? Array.from({ length: 5 }).map((_, i) => (
-              <Card key={i}>
-                <CardContent className="p-6">
-                  <Skeleton className="h-3 w-16" />
-                  <Skeleton className="mt-3 h-8 w-12" />
-                </CardContent>
-              </Card>
-            ))
-          : kpis.map((k) => (
-              <Card key={k.label}>
-                <CardContent className="p-6">
-                  <div className="text-xs text-muted-foreground">{k.label}</div>
-                  <div className="mt-2 text-3xl font-bold tabular-nums">{formatNumber(k.value)}</div>
-                </CardContent>
-              </Card>
-            ))}
+      {/* Service Status Cards */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        {SERVICE_CONFIG.map((svc) => {
+          const svcStatus = status?.services[svc.name as keyof typeof status.services];
+          const isHealthy = svcStatus?.healthy ?? false;
+          const isRunning = svcStatus?.running ?? false;
+          const isDisabled = svcStatus?.state === "disabled";
+
+          return (
+            <Card
+              key={svc.name}
+              className={`${
+                darkMode ? "bg-slate-900 border-slate-800" : "bg-white"
+              } ${isDisabled ? "opacity-60 border-dashed" : ""}`}
+            >
+              <CardHeader className="flex flex-row items-center justify-between pb-2">
+                <div className="flex items-center gap-2">
+                  <div
+                    className="w-3 h-3 rounded-full"
+                    style={{ backgroundColor: svc.color }}
+                  />
+                  <CardTitle className={`text-sm ${darkMode ? "text-slate-200" : "text-slate-800"}`}>
+                    {svc.label}
+                  </CardTitle>
+                </div>
+                {isDisabled ? (
+                  <Badge variant="secondary">未启用</Badge>
+                ) : isHealthy ? (
+                  <Badge variant="success">健康</Badge>
+                ) : isRunning ? (
+                  <Badge variant="warning">启动中</Badge>
+                ) : (
+                  <Badge variant="secondary">已停止</Badge>
+                )}
+              </CardHeader>
+              <CardContent>
+                <p className={`text-xs ${darkMode ? "text-slate-500" : "text-slate-400"}`}>
+                  端口 {svcStatus?.port ?? svc.name.includes("xhs") ? "8080" : svc.name.includes("pbp") ? "8090" : "8091"}
+                </p>
+                {svcStatus?.last_error && (
+                  <p className="text-xs text-red-400 mt-1">{svcStatus.last_error}</p>
+                )}
+              </CardContent>
+            </Card>
+          );
+        })}
       </div>
 
-      <Card>
-        <CardHeader>
-          <CardTitle>最近发布</CardTitle>
-          <CardDescription>最近 20 条发布记录，每 30s 自动刷新</CardDescription>
-        </CardHeader>
-        <CardContent>
-          {isLoading ? (
-            <div className="space-y-2">
-              {Array.from({ length: 5 }).map((_, i) => (
-                <Skeleton key={i} className="h-10 w-full" />
-              ))}
-            </div>
-          ) : !data || data.recent_publishes.length === 0 ? (
-            <p className="py-8 text-center text-sm text-muted-foreground">暂无发布记录</p>
-          ) : (
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>平台</TableHead>
-                  <TableHead>标题</TableHead>
-                  <TableHead>状态</TableHead>
-                  <TableHead>时间</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {data.recent_publishes.map((p) => (
-                  <TableRow key={p.id}>
-                    <TableCell>
-                      <Badge variant="outline">{p.channel}</Badge>
-                    </TableCell>
-                    <TableCell className="max-w-[300px] truncate" title={p.title}>
-                      {p.title}
-                    </TableCell>
-                    <TableCell>
-                      <Badge
-                        variant={
-                          p.status === "success"
-                            ? "success"
-                            : p.status === "failed"
-                              ? "destructive"
-                              : "secondary"
-                        }
-                      >
-                        {p.status}
-                      </Badge>
-                    </TableCell>
-                    <TableCell className="text-muted-foreground">{formatDate(p.created_at)}</TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          )}
-        </CardContent>
-      </Card>
+      {/* Quick Stats */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+        <Card className={darkMode ? "bg-slate-900 border-slate-800" : "bg-white"}>
+          <CardContent className="pt-4">
+            <p className={`text-2xl font-bold ${darkMode ? "text-slate-100" : "text-slate-900"}`}>0</p>
+            <p className={`text-xs ${darkMode ? "text-slate-500" : "text-slate-400"}`}>活跃任务</p>
+          </CardContent>
+        </Card>
+        <Card className={darkMode ? "bg-slate-900 border-slate-800" : "bg-white"}>
+          <CardContent className="pt-4">
+            <p className={`text-2xl font-bold ${darkMode ? "text-slate-100" : "text-slate-900"}`}>0</p>
+            <p className={`text-xs ${darkMode ? "text-slate-500" : "text-slate-400"}`}>已绑定账号</p>
+          </CardContent>
+        </Card>
+        <Card className={darkMode ? "bg-slate-900 border-slate-800" : "bg-white"}>
+          <CardContent className="pt-4">
+            <p className={`text-2xl font-bold ${darkMode ? "text-slate-100" : "text-slate-900"}`}>0</p>
+            <p className={`text-xs ${darkMode ? "text-slate-500" : "text-slate-400"}`}>本月发布</p>
+          </CardContent>
+        </Card>
+        <Card className={darkMode ? "bg-slate-900 border-slate-800" : "bg-white"}>
+          <CardContent className="pt-4">
+            <p className={`text-2xl font-bold ${darkMode ? "text-slate-100" : "text-slate-900"}`}>0</p>
+            <p className={`text-xs ${darkMode ? "text-slate-500" : "text-slate-400"}`}>待处理告警</p>
+          </CardContent>
+        </Card>
+      </div>
+
+      {error && (
+        <Card className="border-red-500/50 bg-red-500/10">
+          <CardContent className="pt-4">
+            <p className="text-sm text-red-400">无法连接到 Launcher: {error}</p>
+          </CardContent>
+        </Card>
+      )}
     </div>
   );
 }

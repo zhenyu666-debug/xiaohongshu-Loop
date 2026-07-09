@@ -8,7 +8,7 @@
 
   Build:
     cd installer
-    .\build_msi.ps1 -Version 0.6.1
+    .\build_msi.ps1 -Version 0.6.3
 
   Author: zhenyu666-debug
 -->

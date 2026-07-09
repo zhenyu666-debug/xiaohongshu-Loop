@@ -1,68 +1,70 @@
-export interface Account {
-  id: number;
-  nickname: string;
+// API types matching backend pydantic schemas
+
+export interface AccountOut {
+  id: string;
+  tenant_id: string;
   channel: string;
-  stage: string;
+  nickname: string;
+  stage: "new" | "warmup" | "normal" | "cooling" | "banned";
   proxy: string | null;
+  cookie_path: string | null;
   cookies_valid: boolean;
+  enabled: boolean;
+  created_at: string;
+  updated_at: string;
 }
 
-export interface Task {
+export interface TaskOut {
   id: number;
+  tenant_id: string;
   name: string;
   channel: string;
-  schedule: string;
-  enabled: boolean;
-  last_run: string | null;
+  account_ids: string[];
+  template_key: string;
+  kind: "once" | "loop" | "schedule";
+  status: "draft" | "active" | "paused";
+  cron: string | null;
+  interval_minutes: number | null;
+  jitter_minutes: number;
+  window_start: string | null;
+  window_end: string | null;
+  use_ai: boolean;
+  next_run_at: string | null;
+  last_run_at: string | null;
+  created_at: string;
+  updated_at: string;
 }
 
-export interface DashboardSummary {
-  total_accounts: number;
-  active_accounts: number;
-  total_tasks: number;
-  pending_tasks: number;
-  running_tasks: number;
-  recent_publishes: Publish[];
-}
-
-export interface Publish {
+export interface AlertOut {
   id: number;
-  channel: string;
-  status: string;
-  title: string;
+  tenant_id: string;
+  level: "info" | "warning" | "error";
+  message: string;
+  resource: string;
+  resource_id: string | null;
   created_at: string;
 }
 
-export interface HealthResp {
-  status: "ok" | "degraded" | "down";
-  services: { name: string; status: "up" | "down"; latency_ms?: number }[];
+export interface PublishResult {
+  success: boolean;
+  error?: string;
+  url?: string;
+  published_at?: string;
 }
 
-export interface Candidate {
-  id: string;
-  smiles: string;
-  score: number;
-  rank: number;
-  descriptors: Record<string, number>;
+export type ServiceName = "xhs-saas" | "pbp-api" | "lakehouse-api";
+
+export interface ServiceStatus {
+  port: number;
+  enabled: boolean;
+  running: boolean;
+  healthy: boolean;
+  state: "running" | "stopped" | "disabled";
+  last_error: string;
 }
 
-export interface CandidateKpi {
-  total: number;
-  top20_avg_score: number;
-  score_min: number;
-  score_max: number;
-  distribution: { bucket: string; count: number }[];
-}
-
-export interface AnalyticsKpi {
-  pv_today: number;
-  uv_today: number;
-  pv_uv_ratio: number;
-  conversions_today: number;
-  funnel: { stage: string; count: number }[];
-}
-
-export interface AnalyticsSeries {
-  name: string;
-  points: { ts: string; value: number }[];
+export interface LauncherSnapshot {
+  console_url: string;
+  all_healthy: boolean;
+  services: Record<ServiceName, ServiceStatus>;
 }
