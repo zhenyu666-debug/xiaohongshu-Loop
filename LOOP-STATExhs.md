@@ -1,7 +1,7 @@
 ﻿# LOOP-STATExhs.md
 
-Last updated: 2026-07-10 09:35 UTC+8
-Session: README sync to reflect AI Agent platform + Redis + MSI v0.6.5
+Last updated: 2026-07-10 13:05 UTC+8
+Session: Redis rate limiter (multi-worker) + MSI in-place upgrade fix
 
 ## 架构摘要
 
@@ -550,7 +550,7 @@ git ls-remote origin main
 | 优先级 | 待办 | 状态 |
 |---|---|---|
 | P1 | 真实 LLM 流式端到端 | ❌ mock LLM 已支持 astream，但没在 RAG pipeline 跑过真流式 |
-| P1 | 把限流挂到 API 网关 | ❌ 当前是 in-process 限流；多 uvicorn worker 不共享 |
+| P1 | 把限流挂到 Redis | ✅ done (commit 071ba7c, RedisTokenBucket + Lua EVALSHA) |
 | P2 | 修 candle CNDL1098 warning | ❌ cosmetic，v0.6.0 起一直有 |
 | P2 | MSI 改用 git lfs 追踪 | ❌ 159 MB push 600s；lfs 应该能 10x 加速 |
 | P2 | Alembic migration 跟上新 ORM 字段 | ❌ 新增列需要 migration |
@@ -715,7 +715,7 @@ git ls-remote origin main
 | P1 | 接真 LLM provider | ❌ 当前自动 fallback 到 mock；prod 走 OpenAI / Anthropic |
 | P1 | MemoryDB → Redis 后端 | ✅ done (55b9568, RedisMemoryDB + fakeredis 测试) |
 | P1 | 真实 LLM 流式端到端 | ❌ mock LLM 已支持 astream，但没在 RAG pipeline 跑过真流式 |
-| P1 | 把限流挂到 API 网关 | ❌ 当前是 in-process 限流；多 uvicorn worker 不共享 |
+| P1 | 把限流挂到 Redis | ✅ done (commit 071ba7c, RedisTokenBucket + Lua EVALSHA) |
 | P2 | Alembic migration 跟上新 ORM 字段 | ❌ 新增列需要 migration |
 | P2 | 把 stress test 接入 CI | ❌ 180s 太长走 nightly |
 | P2 | 内容 agent 真实发到 xhs 跑通端到端 | ❌ 还需要扫码 + 真实 cookie |
@@ -725,7 +725,7 @@ git ls-remote origin main
 | 优先级 | 待办 | 状态 |
 |---|---|---|
 | P1 | 真实 LLM 流式端到端 | ❌ mock LLM 已支持 astream，但没在 RAG pipeline 跑过真流式 |
-| P1 | 把限流挂到 API 网关 | ❌ 当前是 in-process 限流；多 uvicorn worker 不共享 |
+| P1 | 把限流挂到 Redis | ✅ done (commit 071ba7c, RedisTokenBucket + Lua EVALSHA) |
 | P2 | 修 candle CNDL1098 warning | ❌ cosmetic，v0.6.0 起一直有 |
 | P2 | MSI 改用 git lfs 追踪 | ❌ 159 MB push 600s；lfs 应该能 10x 加速 |
 | P2 | Alembic migration 跟上新 ORM 字段 | ❌ 新增列需要 migration |
@@ -757,3 +757,48 @@ git ls-remote origin main
   # README.md | 149 ++++++++++++++++++++++++++++++++++++++++-----
   # 1 file changed, 139 insertions(+), 10 deletions(-)
   ```
+
+### item: MSI 修复覆盖安装（commit 9284f4f）
+- **status**: done
+- **改动** (`installer/wix/product.wxs`):
+  - `ProductCode = "*"` → WiX 每次 build 生成新 GUID（之前固定 GUID 导致同版本重装被 Windows Installer 判定为"已有"并拒绝）
+  - `AllowSameVersionUpgrades="yes"` → 允许相同版本重新安装（之前是 "no"）
+  - UpgradeCode 保持不变 → Windows Installer 仍能正确识别为同一产品的升级
+- **下次注意**:
+  - 以后打 MSI 不需要先卸载，直接重跑 msiexec /i 即可覆盖安装
+  - 新版本（Version 递增）时 Windows Installer 会自动走 MinorUpgrade 路径，体验不变
+  - ProductCode=`*` 是 WiX 标准做法，所有商业 MSI 都这样用
+
+### item: AI Tool 限流挂到 Redis（commit 071ba7c）
+- **status**: done
+- **改动** (4 files, +614/-1):
+  - `app/ai/tools/redis_rate_limit.py` (new, ~280 行):
+    - `RedisTokenBucket`: 与 in-process `TokenBucket` 完全相同的 API（acquire / acquire_or_wait / retry_after / tokens / reset），但状态存在 Redis
+    - `rl:tool:{name}` → hash {tokens, last_refill}，原子操作靠 Lua EVALSHA
+    - 两个 Lua script：`_LUA_ACQUIRE`（refill + 扣减原子，返回 granted + retry_after）和 `_LUA_INSPECT`（只读，供 retry_after / tokens 使用，introspection 不改变 bucket）
+    - **关键 bug 修复**：Lua 返回 `{tokens, retry_after}` 时，小数被 redis-py 的 int 截断（如 0.996 → 0）。改用 `tostring()` 返回字符串，Python 端 `float(res[1])` 正确读到值。
+    - `NOSCRIPT` 自动重载（脚本被 Redis flush 后重新 load 一次）
+  - `app/ai/tools/registry.py`:
+    - `execute()`: `bucket.retry_after()` 可能是协程（Redis）也可能是普通值（in-process），用 `asyncio.iscoroutine()` 分流后 await
+  - `app/core/config.py`:
+    - `ai_tool_rate_limit_backend: str = "memory"`（"memory" | "redis"）
+    - `ai_tool_rate_limit_redis_url: str = ""`（空则复用 `redis_url`）
+  - `tests/test_ai_rate_limit_redis.py` (new, 15 tests):
+    - 全部用 fakeredis.aioredis（需 `pip install lupa` 才能支持 Lua scripting）
+    - 关键场景：两个 ToolRegistry 实例各自持有独立的 `RedisRateLimiterRegistry` 但共享同一 fakeredis client → 模拟两个 uvicorn worker，bucket 状态跨实例共享
+    - 并发 20 个 acquire 精确只有 5 个成功（Lua 原子性保证）
+- **测试**: 191 passed, 1 skipped（新增 15 个 redis rate limit 测试）
+- **验证**:
+  ```bash
+  cd xiaohongshu-saas
+  python -m pytest tests/test_ai_rate_limit_redis.py -v
+  # 15 passed in 3.17s
+  python -m pytest -q --ignore=tests/stress_test_consolidated_v2.py
+  # 191 passed, 1 skipped in 51.04s
+  ```
+- **下次注意**:
+  - 切到 Redis 限流只需：`settings.ai_tool_rate_limit_backend = "redis"` 并确保 `redis_url` 正确（默认复用已有的 Redis）
+  - `lupa` 只在测试需要（fakeredis Lua 支持）；生产 Redis 天然支持 Lua，无需额外依赖
+  - Redis 限流后多 worker 共享状态一致，但 `retry_after` 端到端延迟取决于 Redis 网络 RTT（同机房通常 <1ms 无感）
+  - 当前限流粒度是 per-tool + per-process（如需 per-tenant 需加租户维度的 key 前缀）
+  - `ai_tool_rate_limit_backend` 还没接 FastAPI 启动时自动初始化；需在 `app/main.py` 或 lifespan 里加一行 `build_redis_rate_limiter(...)` 并注入到 global registry
