@@ -546,6 +546,18 @@ git ls-remote origin main
 | P2 | 内容 agent 真实发到 xhs 跑通端到端 | ❌ 还需要扫码 + 真实 cookie |
 | P2 | Coordinator agent 接入 APScheduler | ❌ 现在是手动 await.run() |
 
+## 2026-07-10 第十一次 session 后续剩余待办（v0.6.5 之后）
+| 优先级 | 待办 | 状态 |
+|---|---|---|
+| P1 | 真实 LLM 流式端到端 | ❌ mock LLM 已支持 astream，但没在 RAG pipeline 跑过真流式 |
+| P1 | 把限流挂到 API 网关 | ❌ 当前是 in-process 限流；多 uvicorn worker 不共享 |
+| P2 | 修 candle CNDL1098 warning | ❌ cosmetic，v0.6.0 起一直有 |
+| P2 | MSI 改用 git lfs 追踪 | ❌ 159 MB push 600s；lfs 应该能 10x 加速 |
+| P2 | Alembic migration 跟上新 ORM 字段 | ❌ 新增列需要 migration |
+| P2 | 把 stress test 接入 CI | ❌ 180s 太长走 nightly |
+| P2 | Coordinator agent 接入 APScheduler | ❌ 现在是手动 await.run() |
+| P2 | 把 console 接到 xiaohongshu-saas/ 的 /api/ai/* | ❌ console 客户端现在看不到 AI 改动，要走 web 服务 |
+
 ## 2026-07-10 第九次 session 改动（tool registry 限流）
 
 ### 背景
@@ -587,6 +599,65 @@ git ls-remote origin main
   - 单工具 50 calls @ capacity 10k → 0 rate_limited
   - 单工具 20 calls @ capacity 10 (default) → 10 成功 + 10 rate_limited（符合预期）
   - 不同工具之间互不影响（每个工具独立桶）
+
+## 2026-07-10 第十一次 session 改动（v0.6.5 MSI + GitHub Release）
+
+### 背景
+- 用户在第十次 session（Redis memory backend）后说「记得打一个新的msi然后release」
+- 之前 v0.6.4 MSI（166.9 MB）是 7/7 打的，**不包含**第八次（AI 重写 2eebf78）、第九次（tool 限流 M7）、第十次（Redis memory 55b9568）任何改动
+- 选了完整重打 PyInstaller dist + MSI（不是单纯 version bump）
+
+### item: 新增 onedir build 脚本
+- **status**: done
+- **改动** (commit `d947652`, 4 文件 170+/2-):
+  - `scripts/build_launcher_onedir.py` (new, 119 行 ASCII)：
+    - 跟原 `build_launcher.py` 并列，区别只在 `--onedir` + 输出到 `dist/xhs-saas-console/`（**不**带 `-onefile` 后缀）
+    - `installer/build_msi.ps1` 第 18-19 行注释说「MSI 用 onedir layout」，但之前 onedir 是手工打的，没有脚本入口
+    - 这次把 onedir build 做成显式脚本，下次再打 MSI 一条命令搞定
+- **下次注意**:
+  - 跟 build_launcher.py 共享 `HIDDEN_IMPORTS` / `EXCLUDES` 常量要小心飘移；目前是复制粘贴两份，将来抽到 module
+
+### item: 重建 PyInstaller onedir dist
+- **status**: done
+- **改动** (`dist/xhs-saas-console/xhs-saas-console.exe`, 10.7 MB, 2026/7/10 08:26):
+  - PyInstaller 6.21 on Python 3.11
+  - 总 bundle 465 MB（`dist/xhs-saas-console/_internal/`），被 `.gitignore` 排除
+  - 174s build time
+  - 把 console_gui.py 的最新代码（第五次 session 加的 `enabled` 字段 + `main()` 自动 `start_all()`）包进去
+- **注意**:
+  - console_gui.py 不直接调 AI 模块，**AI 改动的实际效果要通过 xiaohongshu-saas/ web 服务才能看到**，不是通过 console 客户端
+  - 如果想让 console 客户端能直接调 AI，需要做：
+    1. console 启动时把 xiaohongshu-saas/ 也作为子进程
+    2. 加 `/api/ai/...` 的代理或 GUI 页面
+    3. **本 commit 没做**，仅是「把 console 重打成含最新 console_gui 代码的 MSI」
+
+### item: 打 v0.6.5 MSI
+- **status**: done
+- **改动** (`installer/output/xhs-saas-console-0.6.5.msi`, 159.1 MB, 2026/7/10):
+  - WiX 3.14.1 candle + light
+  - msiexec /a 验证通过：`xhs-saas-console.exe` + `xhs-saas-console.ico` 都进了 INSTALLDIR
+  - candle 仍然有 CNDL1098 warning（`out.` 写法），是 v0.6.0 起就有的 cosmetic warning
+- **下次注意**:
+  - MSI 体积 159 MB（PyInstaller onedir bundle 465 MB 被 WiX 压缩 + lzx），跟 v0.6.2 一样
+  - 想瘦身得切回 onefile 模式（drop `_internal/` 走 bootloader unpack），但启动慢 2-4s
+  - onedir 仍然是更稳妥的方案
+
+### item: 写 release notes + push + GitHub Release
+- **status**: done
+- **改动**:
+  - `installer/docs/RELEASE_NOTES/v0.6.5.md` (new, 49 行 ASCII)：
+    - Highlights 4 条：AI 平台真实接入、tool 限流、Redis memory、重建 onedir dist
+    - Quick start（msiexec /i /x）
+    - Known issues（CNDL1098 cosmetic / pyinstaller admin warning / SQLite 140 qps 提示换 Redis）
+    - Full Changelog 链接到 `v0.6.4...v0.6.5`
+  - `git tag v0.6.5 d947652` + `git push origin v0.6.5`
+  - `gh release create v0.6.5 --title "v0.6.5 - AI Agent platform + Redis memory backend" --notes-file ... xhs-saas-console-0.6.5.msi`
+  - Release URL: `https://github.com/zhenyu666-debug/xiaohongshu-Loop/releases/tag/v0.6.5`
+  - Asset: `xhs-saas-console-0.6.5.msi` (159.1 MB)
+- **下次注意**:
+  - `git push` 因为 159 MB MSI 用了 **600s**（直推 binary；不是 LFS）
+  - `cmsg6.txt` (PowerShell `Add-Content` 的 stream) 报错是 gh 内部 noise，不影响 release 创建
+  - 下次想加速可以给 `installer/output/*.msi` 加 git lfs 追踪，把 .gitattributes 配好
 
 ## 2026-07-10 第十次 session 改动（Redis memory backend）
 
@@ -649,3 +720,15 @@ git ls-remote origin main
 | P2 | 把 stress test 接入 CI | ❌ 180s 太长走 nightly |
 | P2 | 内容 agent 真实发到 xhs 跑通端到端 | ❌ 还需要扫码 + 真实 cookie |
 | P2 | Coordinator agent 接入 APScheduler | ❌ 现在是手动 await.run() |
+
+## 2026-07-10 第十一次 session 后续剩余待办（v0.6.5 之后）
+| 优先级 | 待办 | 状态 |
+|---|---|---|
+| P1 | 真实 LLM 流式端到端 | ❌ mock LLM 已支持 astream，但没在 RAG pipeline 跑过真流式 |
+| P1 | 把限流挂到 API 网关 | ❌ 当前是 in-process 限流；多 uvicorn worker 不共享 |
+| P2 | 修 candle CNDL1098 warning | ❌ cosmetic，v0.6.0 起一直有 |
+| P2 | MSI 改用 git lfs 追踪 | ❌ 159 MB push 600s；lfs 应该能 10x 加速 |
+| P2 | Alembic migration 跟上新 ORM 字段 | ❌ 新增列需要 migration |
+| P2 | 把 stress test 接入 CI | ❌ 180s 太长走 nightly |
+| P2 | Coordinator agent 接入 APScheduler | ❌ 现在是手动 await.run() |
+| P2 | 把 console 接到 xiaohongshu-saas/ 的 /api/ai/* | ❌ console 客户端现在看不到 AI 改动，要走 web 服务 |
