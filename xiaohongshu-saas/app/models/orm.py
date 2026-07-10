@@ -168,6 +168,7 @@ class Task(Base):
     window_end: Mapped[Optional[str]] = mapped_column(String(8), nullable=True)    # "22:00"
     use_ai: Mapped[bool] = mapped_column(Boolean, default=False)
     ai_persona: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    ai_mode: Mapped[str] = mapped_column(String(32), default="rewrite")  # rewrite | agent
     next_run_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
     last_run_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())

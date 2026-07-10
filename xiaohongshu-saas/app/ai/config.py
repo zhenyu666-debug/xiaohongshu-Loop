@@ -26,7 +26,7 @@ class AISettings(BaseSettings):
     llm_provider: Literal["openai", "anthropic", "ollama"] = "openai"
     openai_api_key: Optional[str] = Field(default=None, validation_alias="OPENAI_API_KEY")
     anthropic_api_key: Optional[str] = Field(default=None, validation_alias="ANTHROPIC_API_KEY")
-    openai_base_url: str = "https://api.openai.com/v1"
+    openai_base_url: str = Field(default="https://api.openai.com/v1", validation_alias="OPENAI_BASE_URL")
     anthropic_base_url: str = "https://api.anthropic.com"
     default_model: str = "gpt-4o"
     embedding_model: str = "text-embedding-3-small"

@@ -1,10 +1,11 @@
 """LLM client wrappers using LangChain."""
 from __future__ import annotations
 
+import os
 from dataclasses import dataclass
 from typing import Any, AsyncIterator, Dict, List, Optional
 
-from app.ai.config import settings
+from app.ai.config import settings as ai_settings
 
 
 @dataclass
@@ -34,15 +35,22 @@ class LLMClient:
         temperature: float = 0.7,
         mock_stream_chunk_words: int = 3,
     ):
-        requested = provider or settings.llm_provider
+        requested = provider or ai_settings.llm_provider
         # Auto-fallback to mock when no API key is configured for the requested provider
-        if requested in ("openai", "anthropic") and not (api_key or settings.llm_api_key):
+        if requested in ("openai", "anthropic") and not (api_key or ai_settings.llm_api_key):
             self.provider = "mock"
         else:
             self.provider = requested
-        self.model = model or settings.default_model
-        self.api_key = api_key or settings.llm_api_key
-        self.base_url = base_url
+        self.model = model or ai_settings.default_model
+        self.api_key = api_key or ai_settings.llm_api_key
+        # Prefer explicitly passed base_url; fall back to AISettings.openai_base_url
+        # (which can be overridden via OPENAI_BASE_URL env var, enabling
+        # SiliconFlow / other OpenAI-compatible proxies without code changes).
+        self.base_url = base_url or (
+            ai_settings.openai_base_url
+            if self.provider == "openai"
+            else None
+        )
         self.temperature = temperature
         # How many words the mock yields per chunk in astream(). Real providers
         # are token-level; this knob just makes the mock's chunk count
@@ -102,9 +110,11 @@ class LLMClient:
         if self.provider == "openai":
             from langchain_openai import OpenAIEmbeddings
 
-            kwargs = {"model": settings.embedding_model}
+            kwargs = {"model": ai_settings.embedding_model}
             if self.api_key:
                 kwargs["api_key"] = self.api_key
+            if self.base_url:
+                kwargs["base_url"] = self.base_url
             self._embeddings = OpenAIEmbeddings(**kwargs)
         else:
             from langchain_community.embeddings import FakeEmbeddings
@@ -207,5 +217,11 @@ class LLMClient:
 
 
 def build_default_llm(**kwargs) -> LLMClient:
-    """Build the default LLM client from settings."""
+    """Build the default LLM client from AI settings.
+
+    Callers may override provider, model, api_key, and base_url.
+    base_url is automatically read from AI_OPENAI_BASE_URL (or the
+    OPENAI_BASE_URL env var), enabling SiliconFlow and other
+    OpenAI-compatible proxies without code changes.
+    """
     return LLMClient(**kwargs)
