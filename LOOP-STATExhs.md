@@ -1,7 +1,7 @@
 ﻿# LOOP-STATExhs.md
 
-Last updated: 2026-07-10 13:35 UTC+8
-Session: Alembic 幂等 migration (commit d44cfeb)
+Last updated: 2026-07-10 14:45 UTC+8
+Session: SiliconFlow base_url 支持 (commit da9ba64)
 
 ## 架构摘要
 
@@ -329,7 +329,7 @@ msiexec /a installer/output/xhs-saas-console-0.6.2.msi
 | P0 | VectorStore 矩阵化 | ✅ numpy matrix cache + argpartition |
 | P0 | Embedder 哈希种子 | ✅ hashlib.md5 + default_rng |
 | P1 | 把 InMemoryVectorStore 换成 ChromaDB | ❌ 当前实现 O(n) 查询，>1M 向量要 HNSW/IVF |
-| P1 | 接真 LLM provider | ❌ 当前是 mock；prod 走 OpenAI/Anthropic |
+| P1 | 接真 LLM provider | 🔧 done: SiliconFlow base_url 支持 (commit da9ba64)；在 .env 设 OPENAI_API_KEY + OPENAI_BASE_URL 即可真跑 |
 | P1 | LongTermMemory 接 Redis 后端 | ❌ 多进程部署需要共享存储 |
 | P1 | ShortTermMemory 接到 Redis sorted set | ❌ 集群部署需要 |
 | P2 | 给 tool registry 加 token bucket 限流 | ❌ 555k cps 太快会击穿下游 |
@@ -537,7 +537,7 @@ git ls-remote origin main
 |---|---|---|
 | P0 | 推送 AI 重写 | ✅ 2eebf78, origin/main = 2eebf78 |
 | P1 | InMemoryVectorStore → ChromaDB | ❌ 当前是 O(n) 查询，>100k 向量要 HNSW/IVF |
-| P1 | 接真 LLM provider | ❌ 当前自动 fallback 到 mock；prod 走 OpenAI / Anthropic |
+| P1 | 接真 LLM provider | 🔧 done: SiliconFlow base_url 支持 (commit da9ba64)；在 .env 设 OPENAI_API_KEY + OPENAI_BASE_URL 即可真跑 |
 | P1 | MemoryDB → Redis 后端 | ❌ 多进程部署需要共享存储 |
 | P1 | ShortTermMemory 接 Redis sorted set | ❌ 集群部署需要 |
 | P2 | tool registry 加 token bucket 限流 | ✅ M7: app/ai/tools/rate_limit.py + 6 unit tests |
@@ -712,7 +712,7 @@ git ls-remote origin main
 | 优先级 | 待办 | 状态 |
 |---|---|---|
 | P1 | InMemoryVectorStore → ChromaDB | ✅ done as part of M2 (ChromaVectorStore) |
-| P1 | 接真 LLM provider | ❌ 当前自动 fallback 到 mock；prod 走 OpenAI / Anthropic |
+| P1 | 接真 LLM provider | 🔧 done: SiliconFlow base_url 支持 (commit da9ba64)；在 .env 设 OPENAI_API_KEY + OPENAI_BASE_URL 即可真跑 |
 | P1 | MemoryDB → Redis 后端 | ✅ done (55b9568, RedisMemoryDB + fakeredis 测试) |
 | P1 | 真实 LLM 流式端到端 | ❌ mock LLM 已支持 astream，但没在 RAG pipeline 跑过真流式 |
 | P1 | 把限流挂到 Redis | ✅ done (commit 071ba7c, RedisTokenBucket + Lua EVALSHA) |
@@ -813,3 +813,22 @@ git ls-remote origin main
 - **下次注意**:
   - 以后新增列：写 migration 时用 `PRAGMA table_info` 做幂等检测，不用 `IF NOT EXISTS`（SQLAlchemy 执行层不支持 SQLite 扩展语法）
   - SQLite 3.35+ 支持 `ADD COLUMN IF NOT EXISTS` 和 `DROP COLUMN IF EXISTS`，但通过 `op.execute()` 走的是 SQLite 底层，会报 `near "EXISTS": syntax error`——所以用 Python 条件判断
+
+### item: SiliconFlow base_url 支持 (commit da9ba64)
+- **status**: done
+- **改动** (`app/ai/llm.py`):
+  - `LLMClient.__init__`: `base_url` 参数默认改为从 `AISettings.openai_base_url` 读取（而非 None）；`ChatOpenAI` 和 `OpenAIEmbeddings` 构造时都传递 `base_url`
+  - `AISettings.openai_base_url`: 加了 `validation_alias="OPENAI_BASE_URL"`，读 `.env` 中的 `OPENAI_BASE_URL` 环境变量
+  - `app/models/orm.py`: 加 `Task.ai_mode VARCHAR(32) DEFAULT 'rewrite'`（值：`rewrite`=单 prompt，`agent`=Coordinator 多步规划）
+  - `alembic/versions/0003_ai_mode.py` (new): 幂等 migration，DB stamped 到 `0003_ai_mode`
+  - `.env.example`: SiliconFlow 配置示例（API key + base URL + model）
+- **SiliconFlow 使用方法**（.env）：
+  ```
+  OPENAI_API_KEY=<your-key>
+  OPENAI_BASE_URL=https://api.siliconflow.cn/v1
+  OPENAI_MODEL=Qwen/Qwen2.5-72B-Instruct
+  ```
+- **下次注意**:
+  - `app/ai/tools/scheduler_tools.py` line 34 的 `get_scheduler` import 是个 bug，尚未修（这个 function 不存在）
+  - 还没写 `tests/test_real_llm.py`（SiliconFlow smoke test，skip when no key）——下次补
+  - `Task.ai_mode='agent'` 的实际路由逻辑（Coordinator → APScheduler）还没接入 `runner.py`——下次做
