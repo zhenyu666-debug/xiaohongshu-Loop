@@ -54,6 +54,49 @@ def render(template: TemplateSpec, *, rng: Optional[random.Random] = None) -> Co
     )
 
 
+async def agent_rewrite(task: Task, content: ContentItem, *, persona: Optional[str] = None) -> ContentItem:
+    """Multi-step agent rewrite via CoordinatorAgent.
+
+    Uses the Coordinator to fan-out ContentAgent (and optionally AnalysisAgent),
+    producing a richer structured output than the single-prompt rewrite path.
+    Falls back to the template-rendered content when no API key is configured.
+    """
+    if not settings.openai_api_key:
+        return content
+
+    try:
+        from app.ai.agents.coordinator import CoordinatorAgent
+    except ImportError:
+        logger.warning("ai agents not installed; skipping agent rewrite")
+        return content
+
+    try:
+        coordinator = CoordinatorAgent()
+        # Build a natural-language task from the raw content
+        topic = content.title
+        body = content.body[:200]
+        result = await coordinator.coordinate_task(
+            task=f"写一篇关于 {topic} 的小红书笔记。内容：{body}",
+            account_id=task.account_ids[0] if task.account_ids else "default",
+        )
+        draft = result.get("draft", {})
+        if not draft:
+            return content
+        return ContentItem(
+            title=draft.get("title", content.title),
+            body=draft.get("body", content.body),
+            images=content.images,
+            video=content.video,
+            topics=content.topics,
+            mentions=content.mentions,
+            location=content.location,
+            extra=content.extra,
+        )
+    except Exception:
+        logger.exception("Agent rewrite failed, falling back to raw content")
+        return content
+
+
 async def maybe_rewrite(content: ContentItem, *, persona: Optional[str] = None) -> ContentItem:
     """Optional AI rewrite. If `openai` is installed and key configured, rewrite text;
     otherwise return as-is.

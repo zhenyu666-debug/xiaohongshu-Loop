@@ -31,7 +31,7 @@ class SchedulePostTool(BaseTool):
             # Try the real APScheduler path
             task_id = None
             try:
-                from app.scheduler.runner import get_scheduler
+                from app.scheduler import get_scheduler
                 scheduler = get_scheduler()
                 run_date = datetime.fromisoformat(scheduled_time)
                 task_id = str(uuid.uuid4())

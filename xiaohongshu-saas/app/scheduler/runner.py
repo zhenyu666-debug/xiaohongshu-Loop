@@ -11,7 +11,7 @@ from app.core.logging import logger
 from app.core import metrics
 from app.core.risk import evaluate as risk_evaluate
 from app.core.risk import mark_failure, mark_success
-from app.core.types import PublishResult, PublishStatus
+from app.core.types import ContentItem, PublishResult, PublishStatus
 from app.models import Account, Content, Publish, Task
 
 
@@ -42,7 +42,10 @@ async def run_task_once(session: AsyncSession, task: Task) -> list[Publish]:
 
         content = factory.render(template)
         if task.use_ai:
-            content = await factory.maybe_rewrite(content, persona=task.ai_persona)
+            if task.ai_mode == "agent":
+                content = await factory.agent_rewrite(task, content, persona=task.ai_persona)
+            else:
+                content = await factory.maybe_rewrite(content, persona=task.ai_persona)
 
         # Persist content for audit
         content_row = Content(

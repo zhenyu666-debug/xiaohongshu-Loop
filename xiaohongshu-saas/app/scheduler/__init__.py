@@ -24,6 +24,11 @@ from app.scheduler.runner import run_task_once
 _scheduler: Optional[AsyncIOScheduler] = None
 
 
+def get_scheduler() -> Optional[AsyncIOScheduler]:
+    """Return the current global scheduler, or None if not started."""
+    return _scheduler
+
+
 async def _tick_task(task_id: int) -> None:
     async with SessionLocal() as session:
         task = await session.get(Task, task_id)
