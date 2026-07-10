@@ -1,6 +1,7 @@
 """Tool registry for managing available tools."""
 from __future__ import annotations
 
+import asyncio
 from typing import Any, Dict, List, Optional, Callable
 from dataclasses import dataclass
 
@@ -118,12 +119,17 @@ class ToolRegistry:
 
         if not await self._rate_limiter.get(name).acquire():
             bucket = self._rate_limiter.get(name)
+            # ``retry_after`` may be sync (in-process bucket) or async
+            # (Redis-backed bucket). Await only when needed.
+            ra = bucket.retry_after()
+            if asyncio.iscoroutine(ra):
+                ra = await ra
             return ToolResult(
                 success=False,
                 error=f"Rate limit exceeded for tool '{name}'",
                 metadata={
                     "reason": "rate_limited",
-                    "retry_after": bucket.retry_after(),
+                    "retry_after": ra,
                     "limit_per_minute": bucket.rate_per_minute,
                 },
             )

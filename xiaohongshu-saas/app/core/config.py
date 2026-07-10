@@ -29,6 +29,12 @@ class Settings(BaseSettings):
     # ---- Redis ----
     redis_url: str = "redis://localhost:6379/0"
 
+    # ---- AI Tool rate limiter (Redis-backed when set) ----
+    # backend: "memory" (in-process, default) or "redis" (cross-worker shared)
+    # rate_limit_redis_url: defaults to redis_url when empty.
+    ai_tool_rate_limit_backend: str = "memory"
+    ai_tool_rate_limit_redis_url: str = ""
+
     # ---- Channels ----
     default_channel: str = "xiaohongshu"
     enable_xiaohongshu: bool = True
