@@ -1,7 +1,7 @@
-# LOOP-STATExhs.md
+﻿# LOOP-STATExhs.md
 
-Last updated: 2026-07-06 10:50 UTC+8
-Session: 0.6.2 release — 修完所有待办 + 打新 MSI
+Last updated: 2026-07-10 09:35 UTC+8
+Session: README sync to reflect AI Agent platform + Redis + MSI v0.6.5
 
 ## 架构摘要
 
@@ -732,3 +732,28 @@ git ls-remote origin main
 | P2 | 把 stress test 接入 CI | ❌ 180s 太长走 nightly |
 | P2 | Coordinator agent 接入 APScheduler | ❌ 现在是手动 await.run() |
 | P2 | 把 console 接到 xiaohongshu-saas/ 的 /api/ai/* | ❌ console 客户端现在看不到 AI 改动，要走 web 服务 |
+
+## 2026-07-10 第十二次 session · README 同步
+
+### 背景
+- 用户问「看一下 roadmap 到哪一步了 有没有按着这个走 更新一下」
+- 现状：README 还停在 v0.5.3 时代的能力矩阵（70/70 测试、85 MB dist、`build_launcher.py`），AI 平台一行没写
+
+### item: README 大版本同步
+- **status**: done
+- **改动** (commit `6f61b93`, 1 file +139/-10):
+  - 新增「AI Agent 平台 (M1 - M7)」section，含模块树 + 10 行 milestone 表（LLM 8 / RAG 19 / Memory 18 / Agents 22 / Tools 18 / MCP 14 / 限流 16 / Redis 17 / 流式 5 / Chroma persist 合并到 M2）+ quick-try bash + Redis backend 切换 snippet
+  - 能力矩阵加 7 行 AI 行 + Desktop console 行（v0.6.5 链接到 GitHub release）
+  - Roadmap 把 AI 平台 M1-M7 / Redis memory / 真实流式 / Chroma 持久化 / MSI v0.6.5 全部 ✅；新增 4 条 P1/P2（限流到 API 网关 / Alembic / Coordinator->APScheduler / console 接 /api/ai/*）
+  - Test stats 从 70/70 → 176 passed（39 core + 106 AI + 21 console + 5+5 pbp/lake）
+  - Launcher 信息修正：dist 85 MB → 465 MB（onedir 包含 AI deps）；build script 重命名 `build_launcher.py` → `build_launcher_onedir.py`；新增 MSI build 段落（`installer/build.ps1 -Version 0.6.5 -Publish`）
+  - 顶部徽章加 `v0.6.5 - AI Agent Platform` badge 指向 release 页面
+- **下次注意**:
+  - README 跟代码/测试/repo 状态差距已经补回，再往后建议每完成一个 milestone 就同步 README，不要再积压
+  - AI section 用英文术语为主、中文混排，方便 GitHub mobile reader 也能看懂
+- **验证**:
+  ```bash
+  git diff --stat README.md
+  # README.md | 149 ++++++++++++++++++++++++++++++++++++++++-----
+  # 1 file changed, 139 insertions(+), 10 deletions(-)
+  ```
