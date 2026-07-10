@@ -588,13 +588,62 @@ git ls-remote origin main
   - 单工具 20 calls @ capacity 10 (default) → 10 成功 + 10 rate_limited（符合预期）
   - 不同工具之间互不影响（每个工具独立桶）
 
+## 2026-07-10 第十次 session 改动（Redis memory backend）
+
+### 背景
+- 第八次重写时留了「MemoryDB → Redis 后端」这条 P1：多进程部署时 SQLite 没法跨进程共享 state
+- 上一轮（tool 限流）结束后用户挑了「我倾向 Redis」
+
+### item: 实现 Redis memory backend（drop-in 替换）
+- **status**: done
+- **改动** (commit `55b9568`, 3 文件 506 行):
+  - `app/ai/memory/redis_db.py` (new, 506 行)：
+    - `RedisMemoryDB` 类，公开 API 跟 `MemoryDB` 1:1 对齐（`upsert_item` / `query_items` /
+      `delete_item` / `upsert_fact` / `query_facts` / `upsert_episode` /
+      `query_episodes` / `stats` / `clear` / `init`）
+    - 存储：每个 entity 走 Redis hash 存 payload；按 `(agent, tenant, layer)` 建 ZSET 索引
+      - `mem:item:{id}` ← hash
+      - `mem:items_idx:{a}:{t}:{layer}` ← ZSET score=updated_at
+      - `mem:items_idx:{a}:{t}:{layer}:imp` ← ZSET score=importance
+      - `mem:items_set:{a}:{t}` ← SET 计数用
+      - 同上三件套 for facts / episodes
+    - `order_by` 解析：只支持 leading 字段是 `importance` / `updated_at`（跟 `MemoryDB` 实际用法对齐），
+      走对应 ZSET 反向遍历
+    - 字节兼容：redis-py 8.x 默认 `decode_responses=False`（fakeredis 也是），所有读路径显式 decode bytes → str
+    - **`build_redis_memory_db(redis_url=, client=)`** 工厂：URL 走 `redis.asyncio.from_url`，client 走 fakeredis
+    - **`get_memory_db(backend=, ...)`** 顶层工厂：读 `settings.memory_backend`，返回 `RedisMemoryDB` / `MemoryDB` / 错误
+  - `pyproject.toml` [ai] extras 加 `redis>=5.0` 和 `fakeredis>=2.20`
+  - `tests/test_ai_memory_redis.py` (new, 17 测试)：
+    - 直接 db 表面：upsert/query 排序（importance / updated_at 两种 order_by）/ delete / facts / episodes / stats+clear
+    - 四层 integration：short / long / episodic / semantic 全部用 Redis 后端跑
+    - MemoryManager consolidate + derived_from 元数据
+    - agent / tenant 隔离（cross-agent 查不到）
+    - 工厂：`backend=redis, client=...` 成功；缺 client/url 抛 `ValueError`；`backend=cassandra` 抛 `ValueError`
+- **下次注意**:
+  - 这次只覆盖到 `MemoryDB` 公开 surface——`ShortTermMemory.search()` 等上层继续在内存里 `query_items + keyword 过滤`，**没**用 Redis 的全文索引。如果上百万条/进程会卡；真要全文搜索得接 RediSearch
+  - `order_by` 目前只解析首个字段；`"importance DESC, updated_at DESC"` 的二级排序还没实现（v1 没人用）
+  - `get_memory_db(backend="memory")` 当前 fall back 到 SQLite（`:memory:`），不是真 in-memory dict——保持单实现路径
+  - 真 Redis 集群要用的话，每个 `get_memory_db` 调一次 `from_url` 不合适，应该 pool 化（call site 改造，不在本 commit 范围）
+- **测试**: 171/171 单元测试通过（之前 154 + 17 新增）；stress_test_consolidated_v2.py 没改
+- **验证**:
+  ```bash
+  # Redis 后端 4 层 + manager 全跑通
+  cd xiaohongshu-saas
+  python -m pytest tests/test_ai_memory_redis.py -v
+  # 17 passed in 0.62s
+
+  # 全套
+  python -m pytest -q --ignore=tests/stress_test_consolidated_v2.py
+  # 171 passed in 25.93s
+  ```
+
 ### 剩余待办（v0.7+）
 | 优先级 | 待办 | 状态 |
 |---|---|---|
-| P1 | InMemoryVectorStore → ChromaDB | ❌ 当前是 O(n) 查询，>100k 向量要 HNSW/IVF |
+| P1 | InMemoryVectorStore → ChromaDB | ✅ done as part of M2 (ChromaVectorStore) |
 | P1 | 接真 LLM provider | ❌ 当前自动 fallback 到 mock；prod 走 OpenAI / Anthropic |
-| P1 | MemoryDB → Redis 后端 | ❌ 多进程部署需要共享存储 |
-| P1 | ShortTermMemory 接 Redis sorted set | ❌ 集群部署需要 |
+| P1 | MemoryDB → Redis 后端 | ✅ done (55b9568, RedisMemoryDB + fakeredis 测试) |
+| P1 | 真实 LLM 流式端到端 | ❌ mock LLM 已支持 astream，但没在 RAG pipeline 跑过真流式 |
 | P1 | 把限流挂到 API 网关 | ❌ 当前是 in-process 限流；多 uvicorn worker 不共享 |
 | P2 | Alembic migration 跟上新 ORM 字段 | ❌ 新增列需要 migration |
 | P2 | 把 stress test 接入 CI | ❌ 180s 太长走 nightly |
