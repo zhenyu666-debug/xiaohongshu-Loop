@@ -54,6 +54,8 @@ ai = [
     "sentence-transformers>=2.7",
     "docx2txt>=0.8",
     "aiosqlite>=0.19",
+    "redis>=5.0",
+    "fakeredis>=2.20",  # in-memory redis for tests of the memory backend
 ]
 monitoring = [
     "prometheus-client>=0.20",
