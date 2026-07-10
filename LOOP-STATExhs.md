@@ -1,7 +1,7 @@
 ﻿# LOOP-STATExhs.md
 
-Last updated: 2026-07-10 13:05 UTC+8
-Session: Redis rate limiter (multi-worker) + MSI in-place upgrade fix
+Last updated: 2026-07-10 13:35 UTC+8
+Session: Alembic 幂等 migration (commit d44cfeb)
 
 ## 架构摘要
 
@@ -333,7 +333,7 @@ msiexec /a installer/output/xhs-saas-console-0.6.2.msi
 | P1 | LongTermMemory 接 Redis 后端 | ❌ 多进程部署需要共享存储 |
 | P1 | ShortTermMemory 接到 Redis sorted set | ❌ 集群部署需要 |
 | P2 | 给 tool registry 加 token bucket 限流 | ❌ 555k cps 太快会击穿下游 |
-| P2 | Alembic migration 跟上新 ORM 字段 | ❌ `task.tenant_id` 那种新增列要补 migration |
+| P2 | Alembic migration 跟上新 ORM 字段 | ✅ done (commit d44cfeb, 0002_tenant_id 幂等化) |
 | P2 | 把 stress test 接入 CI | ❌ 当前 200s 跑全有点长，可以 nightly |
 
 ## 测试命令
@@ -541,7 +541,7 @@ git ls-remote origin main
 | P1 | MemoryDB → Redis 后端 | ❌ 多进程部署需要共享存储 |
 | P1 | ShortTermMemory 接 Redis sorted set | ❌ 集群部署需要 |
 | P2 | tool registry 加 token bucket 限流 | ✅ M7: app/ai/tools/rate_limit.py + 6 unit tests |
-| P2 | Alembic migration 跟上新 ORM 字段 | ❌ 新增列需要 migration |
+| P2 | Alembic migration 跟上新 ORM 字段 | ✅ done (commit d44cfeb, 0002_tenant_id 幂等化) |
 | P2 | 把 stress test 接入 CI | ❌ 180s 太长走 nightly |
 | P2 | 内容 agent 真实发到 xhs 跑通端到端 | ❌ 还需要扫码 + 真实 cookie |
 | P2 | Coordinator agent 接入 APScheduler | ❌ 现在是手动 await.run() |
@@ -553,7 +553,7 @@ git ls-remote origin main
 | P1 | 把限流挂到 Redis | ✅ done (commit 071ba7c, RedisTokenBucket + Lua EVALSHA) |
 | P2 | 修 candle CNDL1098 warning | ❌ cosmetic，v0.6.0 起一直有 |
 | P2 | MSI 改用 git lfs 追踪 | ❌ 159 MB push 600s；lfs 应该能 10x 加速 |
-| P2 | Alembic migration 跟上新 ORM 字段 | ❌ 新增列需要 migration |
+| P2 | Alembic migration 跟上新 ORM 字段 | ✅ done (commit d44cfeb, 0002_tenant_id 幂等化) |
 | P2 | 把 stress test 接入 CI | ❌ 180s 太长走 nightly |
 | P2 | Coordinator agent 接入 APScheduler | ❌ 现在是手动 await.run() |
 | P2 | 把 console 接到 xiaohongshu-saas/ 的 /api/ai/* | ❌ console 客户端现在看不到 AI 改动，要走 web 服务 |
@@ -716,7 +716,7 @@ git ls-remote origin main
 | P1 | MemoryDB → Redis 后端 | ✅ done (55b9568, RedisMemoryDB + fakeredis 测试) |
 | P1 | 真实 LLM 流式端到端 | ❌ mock LLM 已支持 astream，但没在 RAG pipeline 跑过真流式 |
 | P1 | 把限流挂到 Redis | ✅ done (commit 071ba7c, RedisTokenBucket + Lua EVALSHA) |
-| P2 | Alembic migration 跟上新 ORM 字段 | ❌ 新增列需要 migration |
+| P2 | Alembic migration 跟上新 ORM 字段 | ✅ done (commit d44cfeb, 0002_tenant_id 幂等化) |
 | P2 | 把 stress test 接入 CI | ❌ 180s 太长走 nightly |
 | P2 | 内容 agent 真实发到 xhs 跑通端到端 | ❌ 还需要扫码 + 真实 cookie |
 | P2 | Coordinator agent 接入 APScheduler | ❌ 现在是手动 await.run() |
@@ -728,7 +728,7 @@ git ls-remote origin main
 | P1 | 把限流挂到 Redis | ✅ done (commit 071ba7c, RedisTokenBucket + Lua EVALSHA) |
 | P2 | 修 candle CNDL1098 warning | ❌ cosmetic，v0.6.0 起一直有 |
 | P2 | MSI 改用 git lfs 追踪 | ❌ 159 MB push 600s；lfs 应该能 10x 加速 |
-| P2 | Alembic migration 跟上新 ORM 字段 | ❌ 新增列需要 migration |
+| P2 | Alembic migration 跟上新 ORM 字段 | ✅ done (commit d44cfeb, 0002_tenant_id 幂等化) |
 | P2 | 把 stress test 接入 CI | ❌ 180s 太长走 nightly |
 | P2 | Coordinator agent 接入 APScheduler | ❌ 现在是手动 await.run() |
 | P2 | 把 console 接到 xiaohongshu-saas/ 的 /api/ai/* | ❌ console 客户端现在看不到 AI 改动，要走 web 服务 |
@@ -802,3 +802,14 @@ git ls-remote origin main
   - Redis 限流后多 worker 共享状态一致，但 `retry_after` 端到端延迟取决于 Redis 网络 RTT（同机房通常 <1ms 无感）
   - 当前限流粒度是 per-tool + per-process（如需 per-tenant 需加租户维度的 key 前缀）
   - `ai_tool_rate_limit_backend` 还没接 FastAPI 启动时自动初始化；需在 `app/main.py` 或 lifespan 里加一行 `build_redis_rate_limiter(...)` 并注入到 global registry
+
+### item: Alembic 0002_tenant_id 幂等化 (commit d44cfeb)
+- **status**: done
+- **改动** (`alembic/versions/0002_tenant_id.py`):
+  - 用 `PRAGMA table_info(tasks)` 检测 `tenant_id` 是否已存在，再决定是否 ALTER TABLE
+  - 幂等：`upgrade()` 无列时不 ALTER；`downgrade()` 无列时不 DROP
+  - DB 已 stamp 到 `0002_tenant_id`，`alembic upgrade head` no-op ✓
+  - pytest: 191 passed, 1 skipped ✓
+- **下次注意**:
+  - 以后新增列：写 migration 时用 `PRAGMA table_info` 做幂等检测，不用 `IF NOT EXISTS`（SQLAlchemy 执行层不支持 SQLite 扩展语法）
+  - SQLite 3.35+ 支持 `ADD COLUMN IF NOT EXISTS` 和 `DROP COLUMN IF EXISTS`，但通过 `op.execute()` 走的是 SQLite 底层，会报 `near "EXISTS": syntax error`——所以用 Python 条件判断
