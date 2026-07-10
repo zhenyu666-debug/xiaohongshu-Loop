@@ -16,13 +16,17 @@
      xmlns:util="http://schemas.microsoft.com/wix/UtilExtension">
 
   <!-- Stable identifiers. Do NOT change once shipped. -->
-  <?define ProductCode = "CB49ED5C-30E2-4F98-99DC-63A15816DC5E" ?>
   <?define UpgradeCode = "551C41B2-125F-43A5-BF52-3639B1EFA1D3" ?>
   <?define Manufacturer = "zhenyu666-debug" ?>
   <?define ProductName = "xiaohongshu-Loop Console" ?>
   <?define ShortName    = "xhs-saas-console" ?>
 
-  <Product Id="$(var.ProductCode)"
+  <!-- ProductCode="*" makes WiX generate a fresh GUID on every build so
+       re-running the same MSI (or a rebuild of the same version) always
+       installs without prompting to uninstall first.  UpgradeCode stays
+       fixed so Windows Installer can detect the previous installation and
+       treat the run as a MajorUpgrade rather than a fresh install. -->
+  <Product Id="*"
            Name="$(var.ProductName)"
            Version="$(var.Version)"
            Manufacturer="$(var.Manufacturer)"
@@ -40,7 +44,7 @@
              Languages="1033" />
 
     <MajorUpgrade DowngradeErrorMessage="A newer version is already installed."
-                  AllowSameVersionUpgrades="no"
+                  AllowSameVersionUpgrades="yes"
                   Schedule="afterInstallInitialize" />
 
     <Media Id="1" Cabinet="xhs-saas-console.cab" EmbedCab="yes" CompressionLevel="high" />
