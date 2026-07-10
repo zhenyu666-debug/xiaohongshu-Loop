@@ -25,6 +25,7 @@
   <a href="https://github.com/zhenyu666-debug/xiaohongshu-Loop/actions"><img src="https://img.shields.io/github/actions/workflow/status/zhenyu666-debug/xiaohongshu-Loop/auto-fix.yml?style=for-the-badge&logo=githubactions&logoColor=white&label=auto-fix" alt="auto-fix status"/></a>
   <a href="https://github.com/zhenyu666-debug/xiaohongshu-Loop/blob/main/LICENSE"><img src="https://img.shields.io/github/license/zhenyu666-debug/xiaohongshu-Loop?style=for-the-badge&color=blue" alt="License"/></a>
   <a href="https://www.python.org/"><img src="https://img.shields.io/badge/python-3.11%2B-3776AB?style=for-the-badge&logo=python&logoColor=white" alt="Python 3.11+"/></a>
+  <a href="https://github.com/zhenyu666-debug/xiaohongshu-Loop/releases/tag/v0.6.5"><img src="https://img.shields.io/badge/release-v0.6.5--AI%20Agent%20Platform-FF2442?style=for-the-badge" alt="v0.6.5"/></a>
 </p>
 
 <p align="center">
@@ -59,6 +60,108 @@
 | **控制台** | FastAPI 模板版 + React/Vite 完整版（`/console`） | 双版本 |
 | **观测** | 结构化日志 · `/metrics` Prometheus · `/api/dashboard/summary` | 已上线 |
 | **部署** | `docker compose up` 一键拉起 Web + Worker + Redis + Postgres | 已上线 |
+| **AI LLM client** | OpenAI / Anthropic / Ollama / mock, auto-fallback, real `astream` streaming | shipped |
+| **AI RAG** | real PDF / DOCX / Markdown loaders, ChromaDB persistent, Cross-Encoder rerank | shipped |
+| **AI Memory** | 4-layer (short / long / semantic / episodic), SQLite **+ Redis** backends | shipped |
+| **AI Agents** | LangGraph-style StateGraph, Content / Analysis / Coordinator | shipped |
+| **AI MCP** | stdio JSON-RPC 2.0 transport, client + server | shipped |
+| **AI Tool rate limit** | token bucket, per-tool rate / disabled, `retry_after` metadata | shipped |
+| **Desktop console** | pywebview GUI + MSI installer ([v0.6.5](https://github.com/zhenyu666-debug/xiaohongshu-Loop/releases/tag/v0.6.5)) | shipped |
+
+## AI Agent 平台 (M1 - M7)
+
+> **Goal**: upgrade the platform to a multi-agent system that can talk
+> to LLMs, RAG, tools, memory, and MCP.
+> **Status**: M1 - M7 all done. 176 backend tests passing
+> (1 real-OpenAI test skipped without API key).
+
+### Module layout (`xiaohongshu-saas/app/ai/`)
+
+```
+app/ai/
+|-- llm.py                LangChainClient: OpenAI / Anthropic / Ollama / mock
+|-- config.py             AIConfig
+|-- prompts/              templates (content / analysis / coordinator)
+|-- rag/
+|   |-- document_loader.py    PDF / DOCX / MD with UTF-8/GBK fallback
+|   |-- embedder.py           OpenAI / local SBERT / TF-IDF fallback
+|   |-- retriever.py          MMR + multi-query rewrite
+|   |-- reranker.py           Cross-Encoder rerank
+|   |-- vector_store.py       ChromaDB persistent + InMemory fallback
+|   |-- text_splitter.py      RecursiveCharacter (CJK friendly)
+|   `-- generator.py          anti-hallucination prompt + query/query_stream
+|-- memory/
+|   |-- db.py                 SQLite async backend
+|   |-- redis_db.py           Redis backend (fakeredis for tests)
+|   |-- short_term.py
+|   |-- long_term.py
+|   |-- semantic.py
+|   |-- episodic.py
+|   `-- manager.py
+|-- agents/
+|   |-- base.py
+|   |-- content_agent.py
+|   |-- analysis_agent.py
+|   |-- coordinator.py
+|   `-- graph.py              LangGraph-compatible StateGraph shim
+|-- tools/
+|   |-- base.py
+|   |-- content_tools.py
+|   |-- search_tools.py
+|   |-- scheduler_tools.py
+|   `-- registry.py           global limiter + registry
+|-- mcp/protocol.py           JSON-RPC 2.0 + stdio transport
+`-- langchain/                LangChain integration
+```
+
+### Milestones
+
+| Milestone | What shipped | Tests |
+|---|---|---|
+| M1 Framework | LLMClient multi-provider + mock, AIConfig, FastAPI `/api/ai/*` | 8 |
+| M2 RAG | real loaders, embedder, MMR retriever, Cross-Encoder rerank, anti-hallucination | 19 |
+| M3 Memory | 4-layer async SQLite, agent/tenant isolation, LLM summarization | 18 |
+| M4 Agents | LangGraph-style state machine + content/analysis/coordinator + checkpoint | 22 |
+| M5 Tools | Tool protocol, registry, content/search/scheduler bundles | 18 |
+| M6 MCP | JSON-RPC 2.0 over stdio, client + server, reconnect / timeout | 14 |
+| M7 Tool rate limit | Token bucket, per-tool rate / disabled, `retry_after` metadata | 16 |
+| Redis Memory | `RedisMemoryDB` mirror of SQLite, fakeredis tests | 17 |
+| Real streaming | `LLMClient.astream` multi-chunk + RAG `query_stream` + FastAPI SSE | 5 (+1 skip) |
+| Chroma persist | RAG pipeline process-level singleton, ingest survives across requests | (in M2) |
+
+### Quick try
+
+```bash
+cd xiaohongshu-saas
+pip install -e ".[ai]"           # chromadb / langchain / redis / fakeredis
+
+uvicorn app.main:app --port 8080
+curl http://localhost:8080/api/ai/health
+
+# RAG ingest + streamed query
+curl -X POST http://localhost:8080/api/ai/rag/ingest_text \
+  -H 'content-type: application/json' \
+  -d '{"texts":["braised pork first sear then stew", "honey yuzu tea is autumn-friendly"]}'
+curl -N -X POST http://localhost:8080/api/ai/chat/stream \
+  -H 'content-type: application/json' \
+  -d '{"message":"how do I braise pork?"}'
+
+# Tool rate limit (env var, JSON)
+export XHS_AI_TOOL_RATE_LIMITS='{"web_search":{"rate":2.0,"capacity":4}}'
+```
+
+Switch Redis memory backend (default SQLite):
+
+```python
+from app.ai.memory import get_memory_db
+db = get_memory_db(backend="redis", redis_url="redis://localhost:6379/0")
+```
+
+> Remaining P1/P2 (see [`LOOP-STATExhs.md`](LOOP-STATExhs.md)):
+> rate limit to API gateway (multi-worker), Alembic migration, Coordinator ->
+> APScheduler, console wires `/api/ai/*`, candle CNDL1098 warning.
+
+---
 
 ## 架构
 
@@ -270,6 +373,15 @@ register(XiaohongshuAdapter())
 - [x] Docker 一键起
 - [x] 仓库根 README 装修（Hero + Badge + 架构图）
 - [x] **CI 自动修复**（`auto-fix.yml` + `scripts/auto-fix-tests*.sh`，五层防御）
+- [x] **AI 平台 M1-M7**（LLM / RAG / Memory / Agents / Tools / MCP / 限流）
+- [x] **AI Redis Memory 后端**（多 worker 可共享）
+- [x] **AI 真实流式**（FastAPI SSE + LLMClient.astream）
+- [x] **RAG ChromaDB 持久化**（pipeline singleton）
+- [x] **MSI 发布 v0.6.5**（pywebview GUI + WiX 打包）
+- [ ] 限流挂到 API 网关（多 worker 不共享限流状态）
+- [ ] Alembic migration 跟上新 ORM 字段
+- [ ] Coordinator agent 接入 APScheduler
+- [ ] 控制台 接到 xiaohongshu-saas/ 的 /api/ai/*
 - [ ] 抖音 / 视频号适配器
 - [ ] 多租户（团队 / 角色 / 计费）
 - [ ] 移动端 H5 控制台
@@ -391,11 +503,18 @@ python scripts/e2e_smoke.py
 
 | 服务 | 测试数 |
 |------|-------|
-| xhs-saas backend | 39/39 |
-| xhs-saas console frontend | 21/21 |
-| pbp-api | 5/5 |
-| lakehouse-api | 5/5 |
-| **合计** | **70/70** |
+| xhs-saas backend (core) | 39 |
+| xhs-saas backend (**AI platform**) | **106** · 1 skipped (需 OPENAI_API_KEY) |
+| xhs-saas console frontend | 21 |
+| pbp-api | 5 |
+| lakehouse-api | 5 |
+| **total** | **176 passed** |
+
+> AI platform 106 new tests cover: LLM multi-provider, RAG pipeline,
+> ChromaDB persistent, Redis memory, SQLite memory, 4-layer memory
+> consolidation, Content/Analysis/Coordinator agents, LangGraph shim,
+> Tool registry + rate limit, MCP client+server, FastAPI SSE end-to-end,
+> real OpenAI streaming (needs key).
 
 ### 端口汇总
 
@@ -426,14 +545,24 @@ the target machine).  Stop the docker compose flow and just run this instead.
 | Build output | Path |
 |---|---|
 | `dist/xhs-saas-console/xhs-saas-console.exe` | main launcher (~15 MB) |
-| `dist/xhs-saas-console/_internal/` | bundled runtime + Uvicorn + deps (~85 MB) |
+| `dist/xhs-saas-console/_internal/` | bundled runtime + Uvicorn + AI deps (~465 MB) |
+| `installer/dist/XiaohongshuSaaSConsole-v0.6.5.msi` | Windows MSI installer |
 
-How to build it locally:
+How to build it locally (GUI launcher):
 
 ```bash
 pip install pywebview pystray Pillow pyinstaller
-python scripts/build_launcher.py
+python scripts/build_launcher_onedir.py     # -> dist/xhs-saas-console/
 ```
+
+How to build + release the MSI installer (Windows + WiX 3):
+
+```powershell
+cd installer
+.\build.ps1 -Version 0.6.5 -Publish    # build MSI + tag + gh release attach
+```
+
+MSI release: <https://github.com/zhenyu666-debug/xiaohongshu-Loop/releases/tag/v0.6.5>
 
 Then double-click `dist\xhs-saas-console\xhs-saas-console.exe` and a window
 pops up: live status for the three services, big buttons (Start / Stop /
