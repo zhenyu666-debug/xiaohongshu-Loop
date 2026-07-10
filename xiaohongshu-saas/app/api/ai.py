@@ -38,6 +38,37 @@ def _ensure_tools_registered() -> None:
 _ensure_tools_registered()
 
 
+# Persistent RAG pipeline singleton so /chat/stream queries hit the same
+# index the user populated via /rag/ingest or /ingest. The previous
+# implementation built a new pipeline per call AND reindexed two demo docs
+# on every request, which duplicated data, lost the real corpus, and made
+# the streaming response useless for anything other than smoke tests.
+_RAG_PIPELINE: Optional[RAGPipeline] = None
+_RAG_PIPELINE_LOCK = __import__("threading").Lock()
+
+
+def get_rag_pipeline() -> RAGPipeline:
+    """Get or lazily build the process-wide RAG pipeline.
+
+    Uses an in-memory vector store by default. Callers that want persistence
+    can replace this with a Chroma-backed pipeline by mutating
+    ``_RAG_PIPELINE`` (e.g. in startup hooks).
+    """
+    global _RAG_PIPELINE
+    if _RAG_PIPELINE is None:
+        with _RAG_PIPELINE_LOCK:
+            if _RAG_PIPELINE is None:
+                _RAG_PIPELINE = build_default_rag_pipeline(store_type="memory")
+    return _RAG_PIPELINE
+
+
+def reset_rag_pipeline() -> None:
+    """Drop the cached pipeline. Tests use this to start each case fresh."""
+    global _RAG_PIPELINE
+    with _RAG_PIPELINE_LOCK:
+        _RAG_PIPELINE = None
+
+
 def _memory_db_path() -> str:
     base = os.environ.get("AI_MEMORY_PATH", "data/ai_memory.sqlite")
     Path(base).parent.mkdir(parents=True, exist_ok=True)
@@ -71,6 +102,16 @@ class ChatStreamRequest(ChatRequest):
 class IngestRequest(BaseModel):
     path: str
     persist: bool = True
+
+
+class IngestTextRequest(BaseModel):
+    texts: List[str]
+    source: str = "inline"
+
+
+class IngestTextResponse(BaseModel):
+    chunks: int
+    source: str
 
 
 class IngestResponse(BaseModel):
@@ -156,11 +197,7 @@ async def chat(request: ChatRequest) -> ChatResponse:
 @router.post("/chat/stream")
 async def chat_stream(request: ChatStreamRequest) -> StreamingResponse:
     """Stream the RAG answer as Server-Sent Events."""
-    pipeline = build_default_rag_pipeline()
-    pipeline.index_documents([
-        {"content": "Streaming demo doc", "source": "demo"},
-        {"content": request.message, "source": "user-input"},
-    ])
+    pipeline = get_rag_pipeline()
 
     async def event_source() -> AsyncIterator[str]:
         async for token in pipeline.query_stream(request.message, top_k=3):
@@ -180,7 +217,7 @@ async def ingest(request: IngestRequest) -> IngestResponse:
     docs = loader.load(request.path)
     splitter = TextSplitter()
     chunks = splitter.split_documents(docs)
-    pipeline = build_default_rag_pipeline()
+    pipeline = get_rag_pipeline()
     pipeline.index_documents([
         {"content": c.content, "source": c.metadata.get("source", request.path)}
         for c in chunks
@@ -192,9 +229,38 @@ async def ingest(request: IngestRequest) -> IngestResponse:
     )
 
 
+@router.post("/rag/ingest_text", response_model=IngestTextResponse)
+async def rag_ingest_text(request: IngestTextRequest) -> IngestTextResponse:
+    """Index raw text strings into the singleton RAG pipeline.
+
+    Useful for tests and quick demos where the caller doesn't want to drop
+    a file on disk. Documents are split with the default TextSplitter and
+    appended to whatever's already in the pipeline.
+    """
+    if not request.texts:
+        raise HTTPException(status_code=400, detail="texts must not be empty")
+    splitter = TextSplitter()
+    all_chunks = []
+    for t in request.texts:
+        all_chunks.extend(splitter.split_text(t))
+    pipeline = get_rag_pipeline()
+    pipeline.index_documents([
+        {"content": c.content, "source": request.source}
+        for c in all_chunks
+    ])
+    return IngestTextResponse(chunks=len(all_chunks), source=request.source)
+
+
+@router.post("/rag/reset")
+async def rag_reset() -> Dict[str, str]:
+    """Drop the cached RAG pipeline. Mainly for tests."""
+    reset_rag_pipeline()
+    return {"status": "reset"}
+
+
 @router.post("/rag/query", response_model=RAGQueryResponse)
 async def rag_query(request: RAGQueryRequest) -> RAGQueryResponse:
-    pipeline = build_default_rag_pipeline()
+    pipeline = get_rag_pipeline()
     result = await pipeline.query(request.question, top_k=request.top_k)
     return RAGQueryResponse(
         answer=result.answer,
