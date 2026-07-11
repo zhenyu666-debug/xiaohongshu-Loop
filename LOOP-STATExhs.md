@@ -1266,3 +1266,54 @@ npm run build
 ### 下次注意 (再补一条)
 - 跑 `gh run view --log` 找真实失败原因时，**先过滤 "Found.*error" / "ModuleNotFoundError"** 这种行再翻 context，不要被 setup 阶段的 deprecation warning 干扰
 - 改 workflow 文件后 commit 之前，先在本地 dry-run 试一次 push；GitHub 对 workflow 文件的 scope check 早于 push 协议本身，所以本地能 commit 但 push 一定被拒
+
+## Session 2026-07-12 下午 (今次) - LOOP 框架再启动
+
+### 背景
+- 用户用 LOOP 框架让 session 跑 backlog；blocked 列表里 P0 backend CI 还卡 token scope
+- 思路：scope-blocked 走 "needs me" 规则跳过，挑可独立完成的 P1/P2 收口
+
+### item: 验证 P1 「runner.py → Task.ai_mode='agent'」状态
+- **status**: 已完成（之前 session 做了，但 LOOP-STATE 漏更新）
+- **改动**: 无（确认现有代码）
+  - `app/scheduler/runner.py:43-48` 已经有 dispatch：
+    ```python
+    content = factory.render(template)
+    if task.use_ai:
+        if task.ai_mode == "agent":
+            content = await factory.agent_rewrite(task, content, persona=task.ai_persona)
+        else:
+            content = await factory.maybe_rewrite(content, persona=task.ai_persona)
+    ```
+  - `app/models/orm.py:171` `Task.ai_mode: Mapped[str] = mapped_column(String(32), default="rewrite")` 已存在（commit da9ba64 加的）
+  - `app/scheduler/__init__.py:27` `def get_scheduler()` 也已存在（PR #5 修了之前的 import bug）
+  - `tests/test_scheduler_ai_mode.py` 5 个 unit test 全绿（agent dispatch / rewrite dispatch / use_ai=False skip / persona 传递 / risk block 不触发 rewrite）
+- **结论**: LOOP-STATE 的「P1 runner.py → ai_mode='agent'」条目是 stale —— 代码 + 测试都已就位，只是 P1 标签没打
+
+### item: 修 candle CNDL1098 warning (P2)
+- **status**: done (commit 3ada929, pushed)
+- **改动** (1 file, -1):
+  - `installer/build_msi.ps1` line 84 `"-out."` 删除（candle 不接受这个写法，dry-run 复现警告）
+  - 改为不传 `-out` —— candle 默认就是「write to current directory」，跟原意一致
+  - 验证：`& candle.exe -nologo -arch x64 -ext WixUtilExtension -ext WixUIExtension -dVersion=0.6.8 -dStagingDir=... -dAppIcon=... product.wxs` 0 警告 + 0 错误，输出 `product.wixobj` 到 cwd
+- **下次注意**:
+  - WiX candle 的 `-out` 必须带值（要写到哪个文件），不能空着；如果想"写到当前目录"就**不传 -out**（默认行为）
+  - v0.6.0 起一直有这警告但从来没人 fix，是因为 v0.6.0 时代 candle 的默认 warning level 容忍了它；后来 candle 版本升级后变 loud
+- **为什么这个 fix 在 in-scope 里**: product.wxs 是 installer 文件，AGENTS.md 明确把 `installer/` 列为 in-scope；CNDL1098 是 cosmetic warning，不阻塞 build 但污染日志
+
+### 优先级（最新）
+|| 优先级 | 待办 | 状态 |
+||---|---|---|
+|| P0 | xhs-saas backend CI 全绿 | ⚠️ ruff 绿，pytest 因 numpy 缺失挂；patch 就绪，token scope 拦截中 |
+|| P0 | 修 CI workflow 文件 (data-lakehouse / donor-screener-pbp) | ❌ out-of-scope per AGENTS.md |
+|| P1 | runner.py 接入 Task.ai_mode='agent' 分支 | ✅ done (代码 + 5 unit tests；之前 session 漏标 done) |
+|| P1 | MSI release via Git LFS | ❌ 仍需用户授权 git-lfs 改造 |
+|| P2 | candle CNDL1098 cosmetic | ✅ done (commit 3ada929) |
+|| P2 | 双 MSI release 策略 | ❌ 仍 needs user（v0.6.5 + v0.6.7 两条线是否合并） |
+|| P1 | 真实 LLM 流式端到端 | ❌ test_real_llm.py 已就位（skip when no key），需要 SiliconFlow key 验证 |
+|| P2 | 压力测试入 CI nightly | ❌ nightly 频率未定，runner 未就位 |
+
+### 下次注意
+- 跑 LOOP 时**先 grep 现状**而不是直接相信 LOOP-STATE 的 blocked 列表——这个 session 里 2 个 stale 项（29 ruff errors + runner ai_mode）
+- 改 candle 等编译器参数时，**先在 `$env:TEMP\wix-dryrunN` 做 isolated dry-run** 再改 build 脚本；不要直接跑 `installer/build_msi.ps1`（会触发 4 分钟 heat harvest 阶段）
+- `git push` 在 PowerShell 里被包装成 `git : To <url>` + `RemoteException` 字样是正常噪音，看 `git push` 输出的 `commit..commit  branch -> branch` 行才是 ground truth（这次 `53830a9..3ada929  main -> main` 确认成功）
