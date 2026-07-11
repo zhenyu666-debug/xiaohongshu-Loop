@@ -77,8 +77,11 @@ class CoordinatorAgent(BaseAgent):
                     }))
             if not tasks:
                 return {"sub_results": []}
-            results = await asyncio.gather(*tasks)
-            return {"sub_results": results}
+            # `return_exceptions=True` so one failing sub-graph does not abort
+            # the entire fan-out: surviving sub-graphs still produce results
+            # and the synthesise node can log+drop the failed one.
+            results = await asyncio.gather(*tasks, return_exceptions=True)
+            return {"sub_results": list(results)}
 
         async def synthesize(state: Dict[str, Any]) -> Dict[str, Any]:
             sub = state.get("sub_results", [])

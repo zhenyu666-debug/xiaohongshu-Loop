@@ -4,12 +4,15 @@ from __future__ import annotations
 import json
 import random
 from pathlib import Path
-from typing import List, Optional
+from typing import TYPE_CHECKING, List, Optional
 
 from app.core.config import settings
 from app.core.logging import logger
 from app.core.types import ContentItem
 from app.schemas import TemplateSpec
+
+if TYPE_CHECKING:
+    from app.models.orm import Task
 
 
 _TEMPLATE_DIR = Path("data/templates")
@@ -60,6 +63,10 @@ async def agent_rewrite(task: Task, content: ContentItem, *, persona: Optional[s
     Uses the Coordinator to fan-out ContentAgent (and optionally AnalysisAgent),
     producing a richer structured output than the single-prompt rewrite path.
     Falls back to the template-rendered content when no API key is configured.
+
+    When the coordinator returns only analysis (no draft), the analysis payload
+    is preserved in ``content.extra["agent_analysis"]`` so it surfaces in audit
+    logs instead of being silently dropped.
     """
     if not settings.openai_api_key:
         return content
@@ -70,28 +77,47 @@ async def agent_rewrite(task: Task, content: ContentItem, *, persona: Optional[s
         logger.warning("ai agents not installed; skipping agent rewrite")
         return content
 
+    persona_line = f"人设：{persona}" if persona else "人设：亲和、真诚、不夸张"
     try:
         coordinator = CoordinatorAgent()
-        # Build a natural-language task from the raw content
         topic = content.title
         body = content.body[:200]
+        prompt_task = (
+            f"{persona_line}\n"
+            f"任务：写一篇关于 {topic} 的小红书笔记。内容：{body}"
+        )
         result = await coordinator.coordinate_task(
-            task=f"写一篇关于 {topic} 的小红书笔记。内容：{body}",
+            task=prompt_task,
             account_id=task.account_ids[0] if task.account_ids else "default",
         )
-        draft = result.get("draft", {})
-        if not draft:
-            return content
-        return ContentItem(
-            title=draft.get("title", content.title),
-            body=draft.get("body", content.body),
-            images=content.images,
-            video=content.video,
-            topics=content.topics,
-            mentions=content.mentions,
-            location=content.location,
-            extra=content.extra,
-        )
+        draft = result.get("draft") or {}
+        if draft:
+            return ContentItem(
+                title=draft.get("title", content.title),
+                body=draft.get("body", content.body),
+                images=content.images,
+                video=content.video,
+                topics=content.topics,
+                mentions=content.mentions,
+                location=content.location,
+                extra=content.extra,
+            )
+        analysis = result.get("analysis")
+        if analysis:
+            new_extra = dict(content.extra)
+            new_extra["agent_analysis"] = analysis
+            logger.info("agent_rewrite: no draft, attaching analysis-only fallback")
+            return ContentItem(
+                title=content.title,
+                body=content.body,
+                images=content.images,
+                video=content.video,
+                topics=content.topics,
+                mentions=content.mentions,
+                location=content.location,
+                extra=new_extra,
+            )
+        return content
     except Exception:
         logger.exception("Agent rewrite failed, falling back to raw content")
         return content
