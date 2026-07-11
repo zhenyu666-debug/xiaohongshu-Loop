@@ -81,7 +81,6 @@ try {
             "-dVersion=$Version" `
             "-dStagingDir=$StagingDir" `
             "-dAppIcon=$StagingIcon" `
-            "-out." `
             $productWxs `
             $filesWxs
     if ($LASTEXITCODE -ne 0) { throw "candle failed ($LASTEXITCODE)" }
