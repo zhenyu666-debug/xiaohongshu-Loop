@@ -1163,3 +1163,49 @@ npm run build
 - Cursor `Write`/`StrReplace` 工具在 Windows 上经常输出 UTF-16 LE —— 这次 session 平均每文件 2 次重写
 - 改 DCO 范围（如 zustand + 5 个新文件 + 5 个 encoding fix）一次性合到一个 commit 比拆好，因为 encoding fix 没单独意义
 - `const X: T = ...` 改成 `const _X: T = ...` 对 `noUnusedLocals` **无效**，因为 noUnusedLocals 看标识符引用，不看 _ 前缀。对解构字段也无效。整个删掉最干脆。
+
+## Session 2026-07-12 - 29 ruff errors -> 0
+
+### item: resolve all 29 ruff errors blocking xhs-saas backend CI
+- **status**: done (commit 8675e03, pushed)
+- **改动**:
+  - app/ai/agents/analysis_agent.py: E741 variable `l` -> `line`
+  - app/ai/agents/base.py: dropped unused `context = initial_context or []` (F841)
+  - app/ai/agents/content_agent.py: E741 variable `l` -> `line`
+  - app/ai/mcp/protocol.py: dropped unused `tool = self.tools[tool_name]` (F841)
+  - app/ai/rag/rag_pipeline.py: dropped unused `reranker` (F841)
+  - app/ai/tools/content_tools.py: dropped unused `length_map` (F841)
+  - app/ai/tools/rate_limit.py: dropped unused `tokens = self._tokens` (F841)
+  - app/api/ai.py: added `from app.ai.rag.generator import RAGPipeline` to fix F821
+  - scripts/rate_limit_probe.py: dropped unused `findings = asyncio.run(...)` (F841)
+  - pyproject.toml: added `[tool.ruff.lint.per-file-ignores]` for the two smoke-probe scripts (E401/E701/E702/E722 in auth_smoke.py; E402/F541 in rate_limit_probe.py)
+- **验证**:
+  - `ruff check .` exits 0 (was 29)
+  - `pytest -q tests/` -> 205 passed, 7 skipped, no regression
+- **下次注意**: 以后新增 `scripts/*.py` 一律用 ruff per-file-ignores 处理一行式脚本风格
+- **新发现 (out-of-scope 但值得记录)**: `xhs-saas backend` CI job 在 ruff 通过后，pytest collection 阶段失败：`ModuleNotFoundError: No module named 'numpy'`。原因：workflow `pip install -e ".[dev]"` 没装 `[ai]` extras，但 `app.ai.rag.retriever` 直接 import numpy。修复是改 workflow 成 `pip install -e ".[dev,ai]"`，但本机 OAuth token 没有 `workflow` scope，无法直接 push。**已写好 patch 但未推送**，需用户走有 workflow scope 的账号或重新生成 token。详见 `CI-WORKFLOW-PATCH-NEEDS-SCOPE.md`。
+
+## 优先级（最新）
+
+| 优先级 | 待办 | 状态 |
+|---|---|---|
+| P0 | 修 console pages.test.tsx | ✅ done (commit 9b1e2a8) |
+| P0 | 修 .gitignore 让 src/ 只忽略根目录 | ✅ done (commit 3785d34) |
+| P0 | 修 utils.ts formatDate/formatNumber | ✅ done (commit 3785d34) |
+| P0 | console CI 整体绿 | ✅ done（console job 绿） |
+| P0 | 修 29 pre-existing ruff 错误 | ✅ done (commit 8675e03) |
+| P0 | xhs-saas backend CI 全绿 | ⚠️ ruff 绿，pytest 因 numpy 缺失挂；patch 待 push (workflow scope 限制) |
+| P0 | 修 CI workflow 文件 (data-lakehouse / donor-screener-pbp) | ❌ pre-existing，AGENTS.md 标记 out-of-scope |
+| P1 | runner.py 接入 Task.ai_mode='agent' 分支 | ❌ factory agent_rewrite 已就位，runner 还没接 |
+| P1 | MSI release via Git LFS | ❌ |
+| P2 | candle CNDL1098 cosmetic | ❌ |
+| P2 | 双 MSI release 策略 | ❌ |
+
+## 下次注意
+- 永远用 PowerShell .NET 写 .tsx/.ts，永远不用 `Set-Content`/`Add-Content` —— 后者会出现 "Stream was not readable"
+- 写新文件用 `Write` 工具没问题，但**必须**立刻 verify 编码（`{0:X2}` 第一字节 = 69 才是 UTF-8），不然 esbuild 立即挂
+- Cursor `Write`/`StrReplace` 工具在 Windows 上经常输出 UTF-16 LE —— 这次 session 平均每文件 2 次重写
+- 改 DCO 范围（如 zustand + 5 个新文件 + 5 个 encoding fix）一次性合到一个 commit 比拆好，因为 encoding fix 没单独意义
+- `const X: T = ...` 改成 `const _X: T = ...` 对 `noUnusedLocals` **无效**，因为 noUnusedLocals 看标识符引用，不看 _ 前缀。对解构字段也无效。整个删掉最干脆。
+- ruff 修跨多文件的小问题，最干净的做法是 per-file-ignores + 真正修复使用率高的代码（`app/`）。一行式脚本（`scripts/*.py`）改写法是负收益
+- **`ScriptContent` 的 `pip install -e ".[dev]"` 漏了 `[ai]` extras，下次写 CI workflow 一开始就要把所有用到 import 的 deps 列全**，不要等 CI 红了才补
