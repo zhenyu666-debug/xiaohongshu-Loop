@@ -11,8 +11,10 @@ out/
 target/
 # Gradle auto-creates empty src/main/java/com/… for the root project; legacy Java
 # modules (shared, liepin, zhilian, qcc) are still wired through Gradle but the
-# project has fully migrated to xiaohongshu-saas/. Keep src/ ignored.
-src/
+# project has fully migrated to xiaohongshu-saas/. Anchor the ignore to the repo
+# root so /src/ is ignored but nested src/ trees (xiaohongshu-saas/web/console/src/,
+# etc.) stay tracked.
+/src/
 # Reference mirrors under memory/references/ may carry their own src/ trees;
 # un-ignore those explicitly so the mirror isn't silently truncated.
 # NOTE: PNG/PDF/etc. stay ignored — the mirror is text-only by design, to keep
