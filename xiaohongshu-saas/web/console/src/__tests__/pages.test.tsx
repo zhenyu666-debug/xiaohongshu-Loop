@@ -22,7 +22,8 @@ function wrap(node: React.ReactNode) {
 describe("pages render", () => {
   it("Dashboard", () => {
     render(wrap(<Dashboard />));
-    expect(screen.getByText(/概览/)).toBeInTheDocument();
+    // "概览" appears in both the page <h2> and the TabNav link, so just confirm at least one match exists.
+    expect(screen.getAllByText(/概览/).length).toBeGreaterThan(0);
   });
   it("Accounts", () => {
     render(wrap(<Accounts />));

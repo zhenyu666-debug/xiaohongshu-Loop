@@ -1,5 +1,10 @@
 // API types matching backend pydantic schemas
 
+export interface HealthResp {
+  services: { name: string; status: "up" | "down"; latency_ms?: number }[];
+  [k: string]: unknown;
+}
+
 export interface AccountOut {
   id: string;
   tenant_id: string;
@@ -68,3 +73,20 @@ export interface LauncherSnapshot {
   all_healthy: boolean;
   services: Record<ServiceName, ServiceStatus>;
 }
+
+// Back-compat aliases for shorter imports used by older pages.
+// Task/TaskOut history: the frontend was originally written against a flatter
+// schema with `enabled: boolean`, `schedule: string`, `last_run: string | null`.
+// TaskOut (the pydantic mirror) uses `status: "draft" | "active" | "paused"`,
+// `cron`, `last_run_at`. Pages still reach into the snake-case names, so
+// we alias the old shape here rather than rewrite every page.
+export interface Task {
+  id: number;
+  name: string;
+  channel: string;
+  schedule: string;
+  enabled: boolean;
+  last_run: string | null;
+  [k: string]: unknown;
+}
+export type Account = AccountOut;

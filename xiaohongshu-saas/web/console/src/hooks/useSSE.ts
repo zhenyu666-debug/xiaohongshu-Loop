@@ -6,13 +6,26 @@ export interface SSEEvent {
   timestamp: string;
 }
 
-export function useSSE(url: string, enabled: boolean = true) {
+export interface UseSSEOptions {
+  enabled?: boolean;
+  onEvent?: (event: SSEEvent) => void;
+}
+
+export function useSSE<T = unknown>(url: string, options: boolean | UseSSEOptions = true) {
+  const enabled = typeof options === "boolean" ? options : (options.enabled ?? true);
+  const onEvent = typeof options === "object" ? options.onEvent : undefined;
+
   const [events, setEvents] = useState<SSEEvent[]>([]);
   const [connected, setConnected] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!enabled) return;
+
+    if (typeof EventSource === "undefined") {
+      setError("EventSource is not available in this environment");
+      return;
+    }
 
     let eventSource: EventSource | null = null;
     let reconnectTimeout: ReturnType<typeof setTimeout> | null = null;
@@ -26,12 +39,19 @@ export function useSSE(url: string, enabled: boolean = true) {
       };
 
       eventSource.onmessage = (event) => {
+        let parsed: T | string = event.data as T;
         try {
-          const data = JSON.parse(event.data);
-          setEvents((prev) => [...prev.slice(-99), { type: "message", data, timestamp: new Date().toISOString() }]);
+          parsed = JSON.parse(event.data) as T;
         } catch {
-          setEvents((prev) => [...prev.slice(-99), { type: "message", data: event.data, timestamp: new Date().toISOString() }]);
+          parsed = event.data;
         }
+        const evt: SSEEvent = {
+          type: "message",
+          data: parsed,
+          timestamp: new Date().toISOString(),
+        };
+        setEvents((prev) => [...prev.slice(-99), evt]);
+        onEvent?.(evt);
       };
 
       eventSource.onerror = () => {
@@ -48,7 +68,7 @@ export function useSSE(url: string, enabled: boolean = true) {
       if (reconnectTimeout) clearTimeout(reconnectTimeout);
       eventSource?.close();
     };
-  }, [url, enabled]);
+  }, [url, enabled, onEvent]);
 
   const clearEvents = useCallback(() => setEvents([]), []);
 

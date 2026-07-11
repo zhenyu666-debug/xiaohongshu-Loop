@@ -10,7 +10,7 @@ const SERVICE_CONFIG = [
   { name: "lakehouse-api", label: "数据湖仓 API", color: "#a78bfa" },
 ];
 
-export function Dashboard() {
+function Dashboard() {
   const { darkMode } = useUIStore();
   const { status, error } = useLauncherStatus();
 
@@ -107,3 +107,6 @@ export function Dashboard() {
     </div>
   );
 }
+
+export { Dashboard };
+export default Dashboard;

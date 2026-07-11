@@ -16,7 +16,7 @@ export default function Accounts() {
   });
 
   const loginMut = useMutation({
-    mutationFn: async (id: number) => api.post(`/accounts/${id}/login`),
+    mutationFn: async (id: string) => api.post(`/accounts/${id}/login`),
     onSuccess: () => {
       toast.success("登录任务已启动");
       qc.invalidateQueries({ queryKey: ["accounts"] });

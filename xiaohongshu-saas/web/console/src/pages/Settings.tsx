@@ -116,7 +116,7 @@ export default function Settings() {
               </p>
             ) : (
               <div className="space-y-1">
-                {data.services.map((s) => (
+                {data.services.map((s: { name: string; status: "up" | "down"; latency_ms?: number }) => (
                   <div key={s.name} className="flex items-center justify-between text-sm">
                     <span>{s.name}</span>
                     <span

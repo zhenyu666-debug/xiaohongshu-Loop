@@ -1,11 +1,11 @@
 import * as React from "react";
 import { cn } from "@/lib/utils";
 
+type Variant = "default" | "secondary" | "destructive" | "outline" | "success" | "warning";
+
 const Badge = React.forwardRef<
   HTMLDivElement,
-  React.HTMLAttributes<HTMLDivElement> & {
-    variant?: "default" | "secondary" | "destructive" | "outline" | "success" | "warning";
-  }
+  React.HTMLAttributes<HTMLDivElement> & { variant?: Variant }
 >(({ className, variant = "default", ...props }, ref) => {
   return (
     <div
@@ -13,16 +13,19 @@ const Badge = React.forwardRef<
       className={cn(
         "inline-flex items-center rounded-md border px-2.5 py-0.5 text-xs font-semibold transition-colors focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2",
         {
-          "border-transparent bg-primary text-primary-foreground shadow hover:bg-primary/80": variant === "default",
-          "border-transparent bg-secondary text-secondary-foreground hover:bg-secondary/80": variant === "secondary",
-          "border-transparent bg-destructive text-destructive-foreground shadow hover:bg-destructive/80": variant === "destructive",
+          "border-transparent bg-primary text-primary-foreground shadow hover:bg-primary/80":
+            variant === "default",
+          "border-transparent bg-secondary text-secondary-foreground hover:bg-secondary/80":
+            variant === "secondary",
+          "border-transparent bg-destructive text-destructive-foreground shadow hover:bg-destructive/80":
+            variant === "destructive",
           "text-foreground": variant === "outline",
           "border-transparent bg-emerald-500 text-white shadow hover:bg-emerald-600 dark:bg-emerald-600 dark:hover:bg-emerald-700":
             variant === "success",
           "border-transparent bg-amber-500 text-white shadow hover:bg-amber-600 dark:bg-amber-600 dark:hover:bg-amber-700":
             variant === "warning",
         },
-        className
+        className,
       )}
       {...props}
     />
@@ -31,3 +34,4 @@ const Badge = React.forwardRef<
 Badge.displayName = "Badge";
 
 export { Badge };
+export type { Variant as BadgeVariant };
