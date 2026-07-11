@@ -4,12 +4,15 @@ from __future__ import annotations
 import json
 import random
 from pathlib import Path
-from typing import List, Optional
+from typing import TYPE_CHECKING, List, Optional
 
 from app.core.config import settings
 from app.core.logging import logger
 from app.core.types import ContentItem
 from app.schemas import TemplateSpec
+
+if TYPE_CHECKING:
+    from app.models.orm import Task
 
 
 _TEMPLATE_DIR = Path("data/templates")
