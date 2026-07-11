@@ -832,3 +832,195 @@ git ls-remote origin main
   - `app/ai/tools/scheduler_tools.py` line 34 的 `get_scheduler` import 是个 bug，尚未修（这个 function 不存在）
   - 还没写 `tests/test_real_llm.py`（SiliconFlow smoke test，skip when no key）——下次补
   - `Task.ai_mode='agent'` 的实际路由逻辑（Coordinator → APScheduler）还没接入 `runner.py`——下次做
+
+## 2026-07-11 第十三次 session 改动（agent_rewrite 三个 bug 修复 + v0.6.7 release）
+
+### 背景
+- 用户在合并 PR 之前先看到 4 个 CI check 都失败，担心 v0.6.5 之后的代码没进 main / 没出 MSI
+- 第十次 session（da9ba64）上线了 `factory.agent_rewrite()`，但**三个 silent failure / data loss bug** 把功能废了一大半：
+  - **Bug 1**：persona 从来没传到 coordinator，runner 设的 `task.ai_persona` 整条被丢
+  - **Bug 2**：coordinator 只返回 analysis 不返回 draft 时，分析结果直接被 `if not draft: return content` 截掉
+  - **Bug 3**：`asyncio.gather(*tasks)` 不带 `return_exceptions=True` → 一个子图崩了整条 fan-out 全丢
+- 这三个 bug 都是 v0.6.6 release notes 里**已经宣传了**的功能，所以**跳过 v0.6.6 直接发 v0.6.7**（v0.6.6 从来没真正 release 过；本地有 MSI 但没上传到 GitHub）
+
+### item: 修三个 agent_rewrite bug + 14 个新测试
+- **status**: done
+- **改动** (PR #5，branch `feat/agent-rewrite-persona-fallback`，commit `1a02902`):
+  - **Bug 1 修复** (`app/content_factory/factory.py`):
+    - `agent_rewrite(task, content, *, persona=None)` 加 `persona_line = f"人设：{persona}" if persona else "人设：亲和、真诚、不夸张"`，注入到 prompt 字符串
+  - **Bug 2 修复** (`app/content_factory/factory.py`):
+    - 当 `result["draft"]` 为空但 `result["analysis"]` 存在时，把 analysis 写进 `content.extra["agent_analysis"]` 返回，不再 silently drop
+  - **Bug 3 修复** (`app/ai/agents/coordinator.py`):
+    - `fan_out` 节点：`results = await asyncio.gather(*tasks, return_exceptions=True)`，幸存 sub-graph 仍贡献内容；synthesise 因为用 `isinstance(r, dict)` 判定，自然跳过 exception
+  - **14 个新测试** (`tests/test_factory_agent_rewrite.py` 6 + `tests/test_coordinator_partial_failure.py` 3 + `tests/test_scheduler_ai_mode.py` 5)
+  - **ruff F821 修复** (`factory.py`): 把 `Task` 移进 `TYPE_CHECKING` 分支，`from __future__ import annotations` + TYPE_CHECKING 是 ruff 接受的 forward-reference 标准写法 (commit `dbff4de` on the branch)
+- **下次注意**:
+  - local pytest 全绿 (14+55=69 passed)，但 CI xhs-saas-backend 仍有 29 个 ruff 错误在 scripts/auth_smoke.py / app/api/ai.py / app/ai/agents/*.py 等我没动的文件里 — 是 pre-existing，PR #5 已被合并到 main
+  - 4 个 CI check 全 fail 的真相：3 个 job（data-lakehouse / donor-screener-pbp / xhs-saas-console）是 workflow 文件引用不存在的文件（`pyproject.toml` / `requirements-ci.txt` / `useUIStore`），跟我的 PR 完全无关 — 独立 housekeeping PR 修
+
+### item: PR #5 squash-merge 到 main
+- **status**: done
+- **改动**:
+  - `gh pr merge 5 --squash --delete-branch`
+  - 合并时间：2026-07-11T16:21:19Z by zhenyu666-debug
+  - origin/main 现在在 `1a02902 fix(ai): persona propagation + analysis fallback + fan-out partial failure (#5)`
+  - 用 squash 而不是 merge 或 rebase：3 个 commit (1ebef01 + 29da81d memory doc + dbff4de ruff fix) 合成一个干净的 fix commit
+
+### item: 跳过 v0.6.6 直接发 v0.6.7
+- **status**: done
+- **理由**: v0.6.6 的 release notes 已经承诺 `factory.agent_rewrite()` 能用，但当时这个 function 还有三个 bug — 发 v0.6.6 会让用户拿到一个**有 release notes 但有 bug** 的 MSI，是 trust 问题
+- 顺手删了 `installer/output/xhs-saas-console-0.6.6.{msi,wixpdb}`，避免旧版本残留误导
+
+### item: 写 v0.6.7 release notes
+- **status**: done
+- **改动** (`installer/docs/RELEASE_NOTES/v0.6.7.md`):
+  - Highlights 列了三个 bug 修复 + 14 测试 + ruff 修
+  - 下面"Carryover from v0.6.6"小节把 v0.6.6 没发出去的功能（SiliconFlow / ai_mode / scheduler fix / test_real_llm）也带上，给**完整的 v0.6.5→v0.6.7 changelog** 给用户
+  - Quick start（msiexec /i /x）+ SiliconFlow .env 模板照旧
+  - "Notes" 提醒用户 MSI bundle 没变（console_gui.py 没改），AI 修复要 `git pull main` + 拉 web 服务才有效果
+  - 字符编码 gotcha：Windows PowerShell ISE 把 markdown 默认保存为 UTF-16 LE + BOM，跟 CHANGELOG.md / docs 那次一样，需要 `[System.Text.UTF8Encoding]::new($false)` 重写一遍
+- **下次注意**:
+  - 下次写 release notes 时记得先把 UTF-16 风险记在脑子里；如果用 `Write` tool + Python heredoc 不会触发，但 Edit 工具在 PowerShell 包装路径下会触发
+
+### item: 重建 MSI
+- **status**: done
+- **改动** (`installer/output/xhs-saas-console-0.6.7.msi`, 159.1 MB):
+  - WiX 3.14.1 candle + light + heat
+  - `installer/build_msi.ps1 -Version 0.6.7` 一条命令搞定
+  - **耗 261 秒 (4:21)**：其中 heat 扫 465 MB _internal/，candle/light 各 ≤10秒
+  - msiexec /a verify 通过：xhs-saas-console.exe + xhs-saas-console.ico 都进 INSTALLDIR
+  - candle 还是 CNDL1098 cosmetic warning（v0.6.0 起的 carryover）
+- **下次注意**:
+  - WiX 在 `C:\wix\3.14\`（机器默认）— `Test-Path C:\wix\3.14\candle.exe` 验证后再跑
+  - dist\xhs-saas-console.exe（onedir）不参与 MSI — MSI 用的是 dist\xhs-saas-console\xhs-saas-console.exe（~10 MB boot exe）
+  - 不要复用 v0.6.6 的 MSI 改名成 0.6.7 — 必须重新跑 candle/light，否则 ProductCode GUID 不刷新，覆盖安装会被拒
+
+### item: tag + push + gh release
+- **status**: done
+- **改动**:
+  - `git tag v0.6.7 ea261db` + `git push origin v0.6.7`
+  - commit ea261db 是 docs(release): v0.6.7 release notes，单文件 69+ 行
+  - `gh release create v0.6.7 --title "v0.6.7 - agent_rewrite fixes (persona + analysis + fan-out)" --notes-file v0.6.7.md xhs-saas-console-0.6.7.msi`
+  - Release URL: https://github.com/zhenyu666-debug/xiaohongshu-Loop/releases/tag/v0.6.7
+  - Asset: `xhs-saas-console-0.6.7.msi` (166,843,920 bytes), SHA256: c53708932440fb48cbf0a0d51dcfe87e3d8a871330f8b7b572b330cf9c631d69
+  - gh release create 背景运行 102 秒（159 MB 上传，比 v0.6.5 的 600 秒快 6× — 沙通道问题修了）
+- **下次注意**:
+  - 重复 release 用 `gh release create v0.6.7` 时如果已存在会报 conflict — `gh release delete v0.6.7 + 重 create` 是 clean path；或者第一次成功后直接 `gh release upload` 改 asset
+  - `git push origin v0.6.7` 跟推送 v0.6.5 tag + MSI 到一起时可能撞 5-10 分钟；但本次仅推送 tag 引用（1KB），立刻完成
+
+### v0.6.7 release summary
+
+| 项 | 值 |
+|---|---|
+| Tag | `v0.6.7` |
+| Commit | `ea261db docs(release): v0.6.7 release notes` (parent: `1a02902 fix(ai): ...`) |
+| MSI | `xhs-saas-console-0.6.7.msi` 159.1 MB |
+| Release URL | https://github.com/zhenyu666-debug/xiaohongshu-Loop/releases/tag/v0.6.7 |
+| MSI SHA256 | c53708932440fb48cbf0a0d51dcfe87e3d8a871330f8b7b572b330cf9c631d69 |
+| Code merged | PR #5 (agent_rewrite 3 fixes + 14 tests + ruff F821) |
+| Skipped | v0.6.6 (never released, has same bug) |
+
+### 测试命令
+
+```bash
+cd xiaohongshu-saas
+
+# 单元测试 - 应该是 14 + 之前 55 = 69+ passed
+python -m pytest -q tests/test_factory_agent_rewrite.py \
+    tests/test_coordinator_partial_failure.py \
+    tests/test_scheduler_ai_mode.py
+
+# 手动 verify v0.6.7 MSI
+msiexec /a installer/output/xhs-saas-console-0.6.7.msi /qn TARGETDIR=%TEMP%\verify-v0.6.7
+# 应输出：installed/xhs-saas-console/xhs-saas-console.exe + .ico
+
+# ruff 在我们的文件上要 clean（其它 29 个 pre-existing 错误不在 PR scope）
+cd xiaohongshu-saas
+python -m ruff check app/content_factory/factory.py app/ai/agents/coordinator.py
+# All checks passed!
+```
+
+### 剩余待办（v0.6.7 之后）
+
+| 优先级 | 待办 | 状态 |
+|---|---|---|
+| P0 | 修 CI workflow 文件（data-lakehouse 缺 pyproject.toml / donor-screener-pbp 缺 requirements-ci.txt / xhs-saas-console 缺 useUIStore） | 🟡 partial: .gitignore 修了 (commit 3785d34)；data-lakehouse / donor-screener-pbp workflow 仍在 grep 缺失文件；useUIStore 仍未 commit（zustand 未在 package.json） |
+| P0 | 修 29 个 pre-existing ruff 错误（scripts/auth_smoke.py 等） | ❌ pre-existing，跟 v0.6.7 release 无关 |
+| P1 | 把 v0.6.7 MSI 通过 lfs 追踪（159 MB 直推 600s，lfs 应该 <60s） | ❌ P1 路线图 |
+| P1 | runner.py 接入 Task.ai_mode='agent' 分支（在 scheduler 里调 CoordinatorAgent） | ❌ factory 已经就位，runner 还没接 |
+| P2 | candle CNDL1098 warning 真正修 | ❌ cosmetic |
+| P2 | 双 MSI（v0.6.5 + v0.6.7）都进 release 还是替换？ | ❌ 当前 v0.6.5 仍在线，本次新 release 不替换 |
+| P0 | console pages.test.tsx 真正能编译 (zustand 加 deps + 写 useUIStore/useLauncherStatus/TabNav/badge-extra) | 🟡 局部：useUIStore.ts + useLauncherStatus.ts 已存在但未 commit (UTF-16 修了)，zustand 未在 package.json |
+
+## 2026-07-12 第十四次 session 改动（CI 局部修复 + gitignore /src/ 锚定）
+
+### 背景
+- 用户用 LOOP 模板让 session 自动跑，挑"剩余待办"里 P0 的几个 housekeeping
+- 上次 release v0.6.7 没碰 CI 基础设施，CI 仍然 4 个 job 全 fail
+- 这次目标：每条 housekeeping 单独排查，找到"低风险、单 PR、可验证"的修法，不发明新功能
+
+### item: 修 .gitignore 让 src/ 只忽略根目录
+- **status**: done
+- **改动** (commit `3785d34`, 1 file +3/-3):
+  - 根 .gitignore line 15：`src/` → `/src/`
+  - 原来的 `src/` 在 gitignore 里会匹配任何名为 src 的目录（不仅根目录），结果 `xiaohongshu-saas/web/console/src/**` 一直被静默忽略
+  - git status 看不到，git ls-files 看不到，但文件就在硬盘上——典型的"幽灵文件"陷阱
+  - 找到的根因：commit `8496167 chore(memory): add TencentDB-Agent-Memory reference` 加了 `src/` + 用 `!memory/references/**/src/` 反例补丁，但补丁方向错了——应该用 anchor `/src/` 直接限制到根
+  - 验证：`git check-ignore -v` 两个 case 都对：根 `src/main/java/Foo.java` 忽略（line 17 `/src/`），嵌套 `xiaohongshu-saas/web/console/src/main.tsx` 不忽略
+- **下次注意**:
+  - 写 gitignore 时总是用 `/foo/` 而不是 `foo/` 来明确是只匹配根目录还是递归
+  - 改完 .gitignore 后跑 `git check-ignore -v <expected-ignored-file>` + `git check-ignore -v <expected-tracked-file>` 双确认
+
+### item: 修 console utils.ts 缺 formatDate / formatNumber
+- **status**: done
+- **改动** (commit `3785d34`, 1 file +24/-0):
+  - `src/lib/utils.ts` 加 `formatDate(value, fallback="-")` 和 `formatNumber(value, fallback="-")`
+  - 测试期望：null → "-", invalid date → "-", ISO string → 含 `2026` 的格式, 1234567 → 含 `1,234,567`
+  - 实现：date-fns 不需要，用 plain `Date` + ISO slice(0,10)；number 用 `toLocaleString("en-US")` 加千位分隔
+- **测试** (本地 vitest): `utils.test.ts` → 7/7 passed (之前 5 failed)
+- **下次注意**:
+  - commit 6cb4082 时代 (v0.6.3) 加了测试，但从来没补实现——属于 TDD 写一半的破窗
+  - 改这种"加 helper"补全时记得看相邻页是否需要类似 helper（比如 formatRelativeTime），但本次保守只补测试期望的 2 个
+
+### item: 局部 CI 改善 (本次 commit 后实际跑过 29164547377)
+- **status**: done (改善 15/18，未全绿)
+- **实测结果**:
+  - `xhs-saas console (tsc + vitest + vite build)` vitest 阶段:
+    - ✅ `utils.test.ts` (7 tests, 75ms)
+    - ✅ `useVirtualizedList.test.ts` (3 tests, 59ms)
+    - ✅ `cron.test.ts` (5 tests, 4ms)
+    - ❌ `pages.test.tsx` (0 test) — `Failed to resolve import "zustand" from "src/hooks/useUIStore.ts"`
+  - console 仍 fail（zustand 不在 package.json + TabNav/badge-extra 不存在）
+  - 其它 3 个 job (data-lakehouse / donor-screener-pbp / xhs-saas backend) 仍是 pre-existing 失败，未触到
+
+### item: console pages.test.tsx 仍是 blocked
+- **status**: blocked (not in this commit)
+- **原因**:
+  - `Dashboard.tsx` import `@/hooks/useUIStore` + `@/hooks/useLauncherStatus` + `@/components/layout/TabNav` + `@/components/ui/badge-extra` + `@/components/ui/card`
+  - 其中前 2 个 hooks 在硬盘上有但没 commit，且 useUIStore.ts 是 UTF-16（已修），useLauncherStatus.ts UTF-8 干净
+  - 后 2 个组件 (TabNav, badge-extra) 在硬盘上根本不存在
+  - useUIStore 还 import `zustand` 但 package.json 没有 zustand 依赖
+- **下次修复路线** (下次 session 决定):
+  - 选项 A：加 zustand 依赖 + commit useUIStore.ts (UTF-8) + useLauncherStatus.ts + 写 TabNav.tsx + 写 badge-extra.tsx —— 大约 100-150 行新代码
+  - 选项 B：把 Dashboard.tsx 等页面改写成 stub（不依赖这些 hooks），让测试通过 —— 但失去实际功能
+  - 选项 C：在 vitest.config.ts 加 alias 把那些 hooks mock 掉 —— 测试覆盖就废了
+- **推荐 A** —— 用户既然在生产用 dashboard.tsx，就该把 hooks 真补齐
+
+### 测试命令
+
+```bash
+cd xiaohongshu-saas/web/console
+
+# 验证 utils.ts fix
+npx vitest --run src/__tests__/utils.test.ts
+# -> 7 passed
+
+# 验证 .gitignore fix
+git check-ignore -v xiaohongshu-saas/web/console/src/main.tsx
+# -> 空（不忽略）
+git check-ignore -v src/main/java/Foo.java
+# -> .gitignore:17:/src/
+
+# 完整 console 测试（pages.test.tsx 仍 fail）
+npx vitest --run
+```
