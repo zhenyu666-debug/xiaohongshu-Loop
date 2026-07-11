@@ -302,7 +302,7 @@ def main() -> int:
         return 1
 
     try:
-        findings = asyncio.run(run_probe(rungs, headed=args.headed))
+        asyncio.run(run_probe(rungs, headed=args.headed))
         return 0
     except KeyboardInterrupt:
         print("\nProbe cancelled by user.")

@@ -203,9 +203,8 @@ class MCPProtocol:
         if tool_name not in self.tools:
             return MCPMessage.make_error(-32602, f"Tool not found: {tool_name}", message.id)
         
-        tool = self.tools[tool_name]
         arguments = params.get("arguments", {})
-        
+
         # Execute tool
         handler = self._handlers.get(f"tool:{tool_name}")
         if handler:

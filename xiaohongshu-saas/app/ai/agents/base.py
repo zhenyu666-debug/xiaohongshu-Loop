@@ -114,7 +114,6 @@ class AgentCoordinator:
         pipeline: List[str],
         initial_context: Optional[List[AgentMessage]] = None,
     ) -> AgentMessage:
-        context = initial_context or []
         current_content = task
         for agent_name in pipeline:
             agent = self.agents.get(agent_name)

@@ -87,7 +87,6 @@ class TokenBucket:
                 return False
             async with self._lock:
                 self._refill()
-                tokens = self._tokens
             # Sleep just long enough to accrue one token, capped at remaining.
             if self.rate_per_minute > 0:
                 wait = min(1.0 / (self.rate_per_minute / 60.0), remaining)

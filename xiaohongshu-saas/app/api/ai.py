@@ -16,6 +16,7 @@ from app.ai.agents.analysis_agent import AnalysisAgent
 from app.ai.memory.db import MemoryDB
 from app.ai.memory.manager import MemoryManager
 from app.ai.rag.document_loader import DocumentLoader
+from app.ai.rag.generator import RAGPipeline
 from app.ai.rag.rag_pipeline import build_default_rag_pipeline
 from app.ai.rag.text_splitter import TextSplitter
 from app.ai.tools.registry import tool_registry

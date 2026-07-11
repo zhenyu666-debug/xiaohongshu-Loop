@@ -79,7 +79,6 @@ class GenerateBodyTool(BaseTool):
         try:
             llm = build_default_llm()
             if llm.provider == "mock":
-                length_map = {"short": 100, "medium": 200, "long": 400}
                 body = (
                     f"I've been exploring {topic} lately and wanted to share my thoughts.\n\n"
                     f"This is a {style} style post about {topic}.\n\n"

@@ -79,6 +79,11 @@ target-version = "py310"
 # module-level mocks). Enforce it locally via `ruff check --select F401` instead
 # of failing CI on existing legacy code.
 ignore = ["F401"]
+# scripts/* are one-screen operator smoke probes; try/except + early-return
+# compact style is intentional. Don't fail CI on it.
+[tool.ruff.lint.per-file-ignores]
+"scripts/auth_smoke.py" = ["E401", "E701", "E702", "E722"]
+"scripts/rate_limit_probe.py" = ["E402", "F541"]
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"

@@ -147,7 +147,7 @@ def _try_parse_json(text: str) -> Optional[dict]:
     # Strip markdown fences if present
     if text.startswith("```"):
         lines = text.splitlines()
-        text = "\n".join(l for l in lines if not l.startswith("```"))
+        text = "\n".join(line for line in lines if not line.startswith("```"))
     try:
         return json.loads(text)
     except Exception:
