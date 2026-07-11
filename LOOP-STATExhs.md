@@ -1024,3 +1024,142 @@ git check-ignore -v src/main/java/Foo.java
 # 完整 console 测试（pages.test.tsx 仍 fail）
 npx vitest --run
 ```
+
+## 2026-07-12 第十五次 session 改动（console CI 转绿）
+
+### 背景
+- 上次 commit 3785d34 修了 .gitignore + utils.ts，但 console CI 仍 fail（pages.test.tsx 0 个 test 因为 import 解析失败）
+- 这次继续上次的 P0-C（console pages.test.tsx 真正能编译）：
+  1. zustand 加到 deps（useUIStore 用的）
+  2. 写 TabNav.tsx、badge-extra.tsx
+  3. 提交本来就存在的 useUIStore.ts、useLauncherStatus.ts
+- 上一次推荐的选项 A（实施成本 100-150 行新代码）
+
+### item: 加 zustand 依赖
+- **status**: done
+- **改动** (commit `9b1e2a8`, 2 files):
+  - `package.json` 加 `"zustand": "^5.0.14"`
+  - `package-lock.json` 同步（npm install 自动更新）
+  - 选 zustand 5 而非 4：v5 用 React 18 原生 useSyncExternalStore，更小、更现代
+  - React 18.3.1 与 zustand 5.0.14 peer dep 兼容
+
+### item: 提交 useUIStore.ts + useLauncherStatus.ts
+- **status**: done
+- **改动** (commit `9b1e2a8`):
+  - `src/hooks/useUIStore.ts` (UTF-8) 22 行：zustand + persist 中间件，`darkMode`/`logFilter` 两个字段
+  - `src/hooks/useLauncherStatus.ts` —— 硬盘上是 UTF-16 LE BOM（FF FE 头），用 `[System.IO.File]::ReadAllText($p, [System.Text.Encoding]::Unicode)` 读，再用 `(New-Object System.Text.UTF8Encoding $False)` 强制写 UTF-8 no BOM
+- **坑**: 整个 session 里凡是 `Write`/`StrReplace` 工具出来的 .tsx/.ts 文件，默认成 UTF-16 LE；必须用 PowerShell .NET 强制 UTF-8 不能用 `Set-Content`/`Add-Content`，会撞 "Stream was not readable"
+
+### item: 写 TabNav.tsx + badge-extra.tsx
+- **status**: done
+- **改动** (commit `9b1e2a8`, 2 files):
+  - `src/components/layout/TabNav.tsx`: NavLink-based 5-tab 标签导航（概览/账号/任务/数据/告警），match SidebarNav 样式
+  - `src/components/ui/badge-extra.tsx`: Badge + success/warning 两个新 variant（emerald-500 / amber-500），同时 re-export `Badge` named export
+- **测试**: Dashboard 渲染时同时出现 `<h2>概览</h2>` 和 TabNav 里的 `<a>概览</a>`，所以改 test 用 `getAllByText(/概览/).length > 0` 而不是 `getByText`
+
+### item: badge.tsx 加 success/warning variant（解锁 6 个页面）
+- **status**: done
+- **改动** (commit `9b1e2a8`, 1 file):
+  - Tasks.tsx、Accounts.tsx、AnalyticsOverview.tsx、AnalyticsPvUv.tsx、CandidatesList.tsx、CandidatesTop20.tsx、CandidateDetail.tsx 都用 `<Badge variant="success">`，原 badge.tsx 没有这个 type
+  - 扩展 badge.tsx 的 variant 类型 union 加 `success | warning`，复用 badge-extra 的颜色
+- **发现**: 这种"测试期望但 UI 没实现"的破窗，从 commit 6cb4082 (v0.6.3 时代) 一直没补全
+
+### item: 修 Button.tsx 支持 asChild
+- **status**: done
+- **改动** (commit `9b1e2a8`, 1 file):
+  - `@radix-ui/react-slot` 已经在 node_modules（vendor-radix chunk 用了），但 ButtonProps 没 `asChild`
+  - 加 `asChild?: boolean` prop，渲染时 `Comp = asChild ? Slot : "button"` —— Radix Slot 经典模式
+  - 解锁 AnalyticsOverview / CandidatesList / CandidateDetail 的 `<Button asChild><Link>...</Link></Button>`
+
+### item: useSSE 兼容 boolean|options + useSSE<T> 泛型 + EventSource polyfill
+- **status**: done
+- **改动** (commit `9b1e2a8`, 2 files):
+  - 旧 `useSSE(url, enabled=true)` 兼容：第 2 参接受 `boolean | UseSSEOptions`
+  - 加 `<T>` 泛型，event data 用 `T`
+  - `options.onEvent?: (event: SSEEvent) => void` 回调
+  - EnvironmentGuard: `if (typeof EventSource === "undefined")` 直接 setError 返回，不 throw
+  - `src/test/setup.ts`: jsdom 不提供 EventSource，加一个 no-op FakeEventSource 兜底（SSE 在测试里只挂载不发射事件）
+
+### item: Dashboard.tsx 同时导出 default + named
+- **status**: done
+- **改动** (commit `9b1e2a8`):
+  - App.tsx 用 `import { Dashboard } from "@/pages/Dashboard"`（named）
+  - pages.test.tsx 用 `import Dashboard from "@/pages/Dashboard"`（default）
+  - 都满足：`function Dashboard()` → `export { Dashboard }; export default Dashboard;`
+
+### item: types/api.ts 加 Account/Task/HealthResp 兼容类型
+- **status**: done
+- **改动** (commit `9b1e2a8`, 1 file):
+  - 旧页面用 `Account`/`Task`（短名），而 types/api.ts 只有 `AccountOut`/`TaskOut`（全名）
+  - 加 `export type Account = AccountOut;` 和 `export interface Task { id, name, channel, schedule, enabled, last_run, [k]: unknown }` —— Task 字段用 snake_case（schedule/last_run），pydantic 那边用 last_run_at，所以 `[k: string]: unknown` 兜底
+  - 加 `export interface HealthResp { services: { name, status, latency_ms? }[]; [k: string]: unknown }`
+
+### item: 修 23 个 pre-existing tsc 错误
+- **status**: done (解锁 `npm run build` 通过)
+- **改动** (commit `9b1e2a8`, 多文件):
+  - `components/AlertsCenter.tsx`: `_SERVICE_COLORS` 改名后还报 unused → 直接删除 const
+  - `components/AlertsCenter.tsx`: `setAlerts` 改成 `_setAlerts`
+  - `components/DarkModeToggle.tsx`: 删 `import * as React`（没用 React.xxx）
+  - `components/layout/Sidebar.tsx`: 删 `import { useState }`（没用）
+  - `components/LogViewer.tsx`: 删未用的 `Filter` icon、`_setLogFilter` rename
+  - `pages/AlertsPage.tsx`: `darkMode` 改 `_darkMode`（不在 JSX 用）
+  - `pages/Accounts.tsx`: `loginMut` mutation 入参从 `number` 改 `string`（`AccountOut.id: string`）
+  - `pages/Settings.tsx`: `data.services.map(s => ...)` 给 `s` 加类型 annotation
+  - **批量编码修复**: 8 个文件是 UTF-16 LE，写个一行的 PS 一把过：
+    ```powershell
+    $content=[IO.File]::ReadAllText($f,[Text.Encoding]::Unicode)
+    [IO.File]::WriteAllText($f,$content,(New-Object Text.UTF8Encoding $False))
+    ```
+
+### 测试 / 构建验证
+
+```bash
+cd xiaohongshu-saas/web/console
+
+# 1. 单测 (vitest)
+npx vitest --run
+# -> Test Files  4 passed (4)
+# -> Tests       21 passed (21)   (pages.test.tsx 之前 0/6 现在 6/6)
+
+# 2. 类型检查
+npx tsc --noEmit
+# -> 0 errors
+
+# 3. 完整 build
+npm run build
+# -> ✓ 1645 modules transformed
+# -> ✓ built in 5.72s
+# -> exit code 0
+
+# 4. 注释工具警告: Vite 报 "3 modules transformed" 是 logging 起点处
+#    (因为我们总入口依赖图先把 App.tsx + main.tsx + AppShell 转一次)
+#    后面 1645 = 全量 graph，这个数字变化是正常的
+```
+
+### GitHub Actions CI 结果 (run 29165372348)
+- ✅ `xhs-saas console (tsc + vitest + vite build)` → **success** (27s)
+- ❌ `xhs-saas backend (ruff + pytest)` → failure (pre-existing ruff 错误)
+- ❌ `data-lakehouse (pytest)` → failure (pre-existing workflow 找不到 pyproject.toml)
+- ❌ `donor-screener-pbp (pytest)` → failure (pre-existing workflow 找不到 requirements-ci.txt)
+
+### 进度更新
+
+| 优先级 | 待办 | 状态 |
+|---|---|---|
+| P0 | 修 console pages.test.tsx | ✅ done (commit 9b1e2a8) |
+| P0 | 修 .gitignore 让 src/ 只忽略根目录 | ✅ done (commit 3785d34) |
+| P0 | 修 utils.ts formatDate/formatNumber | ✅ done (commit 3785d34) |
+| P0 | console CI 整体绿 | ✅ partial：console job 绿，其余 3 job 仍 pre-existing fail |
+| P0 | 修 CI workflow 文件 (data-lakehouse / donor-screener-pbp / xhs-saas backend) | ❌ pre-existing |
+| P0 | 修 29 pre-existing ruff 错误 | ❌ pre-existing |
+| P1 | runner.py 接入 Task.ai_mode='agent' 分支 | ❌ factory agent_rewrite 已就位，runner 还没接 |
+| P1 | MSI release via Git LFS | ❌ |
+| P2 | candle CNDL1098 cosmetic | ❌ |
+| P2 | 双 MSI release 策略 | ❌ |
+
+### 下次注意
+- **永远用 PowerShell .NET 写 .tsx/.ts**，永远不用 `Set-Content`/`Add-Content` —— 后者会出现 "Stream was not readable"
+- 写新文件用 `Write` 工具没问题，但**必须**立刻 verify 编码（`{0:X2}` 第一字节 = 69 才是 UTF-8），不然 esbuild 立即挂
+- Cursor `Write`/`StrReplace` 工具在 Windows 上经常输出 UTF-16 LE —— 这次 session 平均每文件 2 次重写
+- 改 DCO 范围（如 zustand + 5 个新文件 + 5 个 encoding fix）一次性合到一个 commit 比拆好，因为 encoding fix 没单独意义
+- `const X: T = ...` 改成 `const _X: T = ...` 对 `noUnusedLocals` **无效**，因为 noUnusedLocals 看标识符引用，不看 _ 前缀。对解构字段也无效。整个删掉最干脆。
