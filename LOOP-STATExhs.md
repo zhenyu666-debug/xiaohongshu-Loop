@@ -1370,3 +1370,47 @@ npm run build
 - 跑 LOOP 时**先 grep 现状**而不是直接相信 LOOP-STATE 的 blocked 列表——这个 session 里 2 个 stale 项（29 ruff errors + runner ai_mode）
 - 改 candle 等编译器参数时，**先在 `$env:TEMP\wix-dryrunN` 做 isolated dry-run** 再改 build 脚本；不要直接跑 `installer/build_msi.ps1`（会触发 4 分钟 heat harvest 阶段）
 - `git push` 在 PowerShell 里被包装成 `git : To <url>` + `RemoteException` 字样是正常噪音，看 `git push` 输出的 `commit..commit  branch -> branch` 行才是 ground truth（这次 `53830a9..3ada929  main -> main` 确认成功）
+
+## Session 2026-07-12 下午 2 (今次 2) - 复验 + 提 LFS
+
+### 背景
+- 上一轮 (4933ad0 + 7c2f9e5) 推了 ai_mode hardening，origin/main = 7c2f9e5
+- 用户回 LOOP 模板继续跑，挑 LOOP-STATE 里剩下的 P2 CNDL1098
+- 跑 candle 实测：发现这个 warning 在当前 `installer/build_msi.ps1` 里**已经不在了**——之前 session (3ada929 + 874f95b) 把 `-out.` 那个 arg 删了
+- 既然 cndl1098 跟 ai_mode 一样是 stale，剩下的就是 **MSI via Git LFS (P1)** —— 这个我能跑（不需要 workflow scope 就能 push `.gitattributes` 和更新其他 in-scope 文件）
+
+### item: 复验 candle 现在真的不报 CNDL1098
+- **status**: confirmed (no fix needed)
+- **改动**: 无
+- **复现步骤**:
+  ```bash
+  cd "C:/Users/Hasee/.qclaw/workspace/get_jobs/installer/build/cndl-test"
+  & "C:\wix\3.14\candle.exe" -nologo -arch x64 -ext WixUtilExtension -ext WixUIExtension \
+      "-dVersion=0.6.7" "-dStagingDir=...\dist\xhs-saas-console" \
+      "-dAppIcon=...\assets\ico\xhs-saas-console.ico" \
+      "...\installer\wix\product.wxs"
+  # -> exit 0，仅输出 "product.wxs" 一行；无 warning、无 error
+  ```
+- **全链路复现** (heat + candle + light):
+  ```bash
+  # staging dist + icon，heat 扫 465 MB，candle + light 各 ~5s
+  # -> xhs-test.msi 166.8 MB 成功产出，candle + light 全程 0 警告 0 错误
+  ```
+- **结论**: commit 3ada929 的 fix 一直在生效，LOOP-STATE 之前 874f95b 标 done 准确
+
+### item: 准备 MSI via Git LFS (P1)
+- **status**: in_progress (下一步)
+- **思路**:
+  1. `git lfs install` 一次（用户全局）
+  2. 写 `.gitattributes`: `installer/output/*.msi filter=lfs diff=lfs merge=lfs -text`
+  3. `git lfs track "installer/output/*.msi"` 然后把现有 v0.6.7 MSI 重新 add（git 会自动 hash 替换成 lfs pointer）
+  4. `git add .gitattributes` + commit + push
+- **风险**:
+  - LFS on GitHub **每 free 账户 1 GB 配额 + 每文件 2 GB 上限**；v0.6.7 MSI 159 MB < 2 GB，OK
+  - 但 v0.6.5 (166.9 MB) 也想 lfs 化的话，~326 MB total，没问题
+  - 已有 1-2 个 v0.6.7 MSI 在 release asset 里 + 仓库里，下游已经下载了 → lfs 切换**不破坏 release link**
+  - GitHub 现在的 v0.6.5 + v0.6.7 release assets 是直接 multipart upload，**不**走 git lfs pointer（gh release upload 不存 git 对象）；所以 lfs 只影响仓库内的 file tracking，不影响 release download
+- **预期收益**:
+  - v0.6.5 直推 600s → lfs 推 <60s（10x）
+  - v0.6.7 也是
+- **下一步**: 先 `git lfs install`（用户级别）+ 写 .gitattributes + git lfs track + add + commit + push
