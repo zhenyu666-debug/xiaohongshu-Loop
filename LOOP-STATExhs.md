@@ -1,4 +1,4 @@
-﻿# LOOP-STATExhs.md
+# LOOP-STATExhs.md
 
 Last updated: 2026-07-10 14:45 UTC+8
 Session: SiliconFlow base_url 支持 (commit da9ba64)
@@ -1264,8 +1264,61 @@ npm run build
 || P2 | 双 MSI release 策略 | ❌ |
 
 ### 下次注意 (再补一条)
-- 跑 `gh run view --log` 找真实失败原因时，**先过滤 "Found.*error" / "ModuleNotFoundError"** 这种行再翻 context，不要被 setup 阶段的 deprecation warning 干扰
-- 改 workflow 文件后 commit 之前，先在本地 dry-run 试一次 push；GitHub 对 workflow 文件的 scope check 早于 push 协议本身，所以本地能 commit 但 push 一定被拒
+## Session 2026-07-12 下午 (今次) - ai_mode dispatcher hardening (P1)
+
+### 背景
+- 用户发了 LOOP 模板要 session 自动跑，挑 P1 列表里 "runner.py → Task.ai_mode='agent' wire-up" 这一项做
+- 读了 runner.py + factory.py 后**发现 wire-up 本身已经在 commit 1a02902 (PR #5) 落地**：runner.py:45-48 已经在 `if task.use_ai:` 里 dispatch 到 `factory.agent_rewrite` 或 `factory.maybe_rewrite`，tests/test_scheduler_ai_mode.py 的 5 个测试都过
+- LOOP-STATExhs.md 之前说 "factory agent_rewrite 已就位，runner 还没接" 是 stale，runner.py:46-48 就是接好的
+
+### item: 真正缺的是 dispatcher 健壮性 (memory/facts/xhs-scheduler-audit.md 两个未消化点)
+- **status**: done (commit 4933ad0, pushed, origin/main = 4933ad0)
+- **改动** (2 files, +138/-6):
+  - `app/scheduler/runner.py:43-46`: 把 `if task.ai_mode == "agent"` / `else` 的内联 dispatch 抽成 `_apply_ai_rewrite(task, content)` helper
+  - `app/scheduler/runner.py:117-156` (new, 41 行): `_apply_ai_rewrite` 实现
+    - **fragility #1 (defence-in-depth)**: try/except 包住 factory 调用，异常时 logger.exception 后返回模板原 content；保证 publish 循环跑到底，task.last_run_at 一定能被更新（不依赖 factory.agent_rewrite 内部是否吞异常）
+    - **fragility #2 (explicit dispatch)**: `mode = (task.ai_mode or "rewrite").lower()` → `if mode == "agent": agent_rewrite` → `if mode == "rewrite": maybe_rewrite` → 落到一个 `logger.warning("Unknown task.ai_mode={!r}; falling back to rewrite path")` + `maybe_rewrite` 兜底再包一层 try/except。None/未知 mode 不再静默吞
+- **下次注意**:
+  - 把可能抛的代码封在 helper 里 + try/except 是简单的 invariant 锁定，写测试时用 `monkeypatch.setattr("app.content_factory.factory.agent_rewrite", boom)` 把 factory 替换成 `async def boom(...): raise RuntimeError(...)`，验证 helper 是否真的吞了
+  - dispatch 改成显式 if/elif 比 if/else 健壮：未来加 mode 不会静默 fallback 到 maybe_rewrite (而是显式 warn)
+  - **`task.ai_mode or "rewrite"`** 处理 None → 当 ai_mode 字段是 None (老 DB 行 OR SQLAlchemy 默认值未加载) 时，行为跟 PR #5 之前一致走 maybe_rewrite；如果以后改 ORM 默认值，记得同步这个 fallback
+
+### item: 2 个新测试覆盖 dispatcher 健壮性
+- **status**: done
+- **改动** (`tests/test_scheduler_ai_mode.py`, 2 tests added):
+  - `test_agent_rewrite_exception_falls_back_to_template_content`: monkeypatch factory.agent_rewrite = `async def boom: raise RuntimeError(...)`，verify runner 不抛异常 + publish row 拿到的是 `template-title` (template_content) 而非任何 agent 产物 + publish status 仍写入 `external_id="ext-fallback"`
+  - `test_unknown_ai_mode_falls_back_to_rewrite_with_warning`: `task.ai_mode = "mystery-mode"`，verify `maybe_rewrite` 被调 1 次 + `agent_rewrite` 0 次 + publish 循环完成 (`publishes` 长度 1)
+- **验证**:
+  ```bash
+  python -m pytest -q tests/test_scheduler_ai_mode.py
+  # -> 7 passed in 0.79s (was 5)
+  python -m pytest -q tests/ --ignore=tests/stress_test_consolidated_v2.py
+  # -> 207 passed, 7 skipped (was 205 passed, no regression)
+  python -m ruff check .
+  # -> All checks passed!
+  ```
+- **下次注意**:
+  - 测试 dispatch 时同时 stub `factory.render` 避免真读 `data/templates/demo.json`；stub 的 template_content 用独立 `ContentItem(title="template-title", ...)`，断言 `publishes[0].title == "template-title"` 能区分 "factory 失败 → 走 fallback" vs "factory 失败 → 用 agent 产物"
+  - 第一个测试的 fallback 路径要 `monkeypatch.setattr("app.content_factory.factory.maybe_rewrite", never_called)` 防止 `else` 兜底把断言短路
+
+### P1 列表 progress update
+|| 优先级 | 待办 | 状态 |
+||---|---|---|
+|| P1 | runner.py 接入 Task.ai_mode='agent' 分支 | ✅ done — dispatch 在 1a02902 落地，本次又加 2 hardening tests + 防御性 try/except + 显式 dispatch (4933ad0) |
+
+### 优先级（最新）
+|| 优先级 | 待办 | 状态 |
+||---|---|---|
+|| P0 | xhs-saas backend CI 全绿 | ⚠️ ruff 绿，pytest 因 numpy 缺失挂；workflow patch 待 push (workflow scope 限制) |
+|| P0 | 修 CI workflow 文件 (data-lakehouse / donor-screener-pbp) | ❌ out-of-scope per AGENTS.md |
+|| P1 | runner.py → ai_mode hardening | ✅ done (4933ad0) |
+|| P1 | MSI release via Git LFS | ❌ |
+|| P2 | candle CNDL1098 cosmetic | ❌ |
+|| P2 | 双 MSI release 策略 | ❌ |
+
+### 下次注意 (再补两条)
+- 跑 `git push` 在 PowerShell 里被 `git : To <url>...` + `RemoteException` 包装是正常现象，**`git ls-remote origin main` 拿到 SHA 才是 ground truth**
+- LOOP-STATE 里 "P1: runner.py 接入 ai_mode" 这种条目要定期 re-audit (audit 文件 `memory/facts/xhs-scheduler-audit.md` 是关键参考)，免得描述和实现飘移
 
 ## Session 2026-07-12 下午 (今次) - LOOP 框架再启动
 
