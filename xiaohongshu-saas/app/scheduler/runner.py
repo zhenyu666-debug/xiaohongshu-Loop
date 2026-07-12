@@ -42,10 +42,7 @@ async def run_task_once(session: AsyncSession, task: Task) -> list[Publish]:
 
         content = factory.render(template)
         if task.use_ai:
-            if task.ai_mode == "agent":
-                content = await factory.agent_rewrite(task, content, persona=task.ai_persona)
-            else:
-                content = await factory.maybe_rewrite(content, persona=task.ai_persona)
+            content = await _apply_ai_rewrite(task, content)
 
         # Persist content for audit
         content_row = Content(
@@ -113,3 +110,47 @@ async def _record_skipped(session: AsyncSession, task: Task, account: Account, r
     await session.flush()
     metrics.inc("publishes_total", channel=task.channel, status="skipped")
     return row
+
+
+async def _apply_ai_rewrite(task: Task, content: ContentItem) -> ContentItem:
+    """Dispatch on ``task.ai_mode`` to the matching factory function.
+
+    Defensive contract:
+        * If the factory raises (e.g. ``factory.agent_rewrite`` ever stops
+          swallowing exceptions internally), the exception is logged here and
+          the template-rendered ``content`` is returned untouched so the
+          publish loop still records ``task.last_run_at`` at the end of
+          ``run_task_once``.
+        * Unknown ``ai_mode`` values fall back to ``maybe_rewrite`` and emit a
+          warning, rather than silently passing through as the previous bare
+          ``else`` did.
+    """
+    mode = (task.ai_mode or "rewrite").lower()
+    persona = task.ai_persona
+
+    try:
+        if mode == "agent":
+            return await factory.agent_rewrite(task, content, persona=persona)
+        if mode == "rewrite":
+            return await factory.maybe_rewrite(content, persona=persona)
+    except Exception:  # noqa: BLE001
+        logger.exception(
+            "AI rewrite failed in scheduler; falling back to template content (task_id={}, mode={})",
+            task.id,
+            mode,
+        )
+        return content
+
+    logger.warning(
+        "Unknown task.ai_mode={!r}; falling back to rewrite path (task_id={})",
+        task.ai_mode,
+        task.id,
+    )
+    try:
+        return await factory.maybe_rewrite(content, persona=persona)
+    except Exception:  # noqa: BLE001
+        logger.exception(
+            "Rewrite fallback failed for unknown ai_mode; returning raw content (task_id={})",
+            task.id,
+        )
+        return content

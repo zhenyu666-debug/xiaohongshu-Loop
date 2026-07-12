@@ -237,3 +237,94 @@ async def test_risk_block_records_skipped_publish_without_rewrite(monkeypatch):
     assert called["agent"] == 0, "risk-blocked account must not trigger agent_rewrite"
     assert called["maybe"] == 0, "risk-blocked account must not trigger maybe_rewrite"
     assert called["add"] == 1, "expected exactly one skipped Publish row"
+
+
+@pytest.mark.asyncio
+async def test_agent_rewrite_exception_falls_back_to_template_content(monkeypatch):
+    """If ``factory.agent_rewrite`` raises (defence-in-depth), the runner must
+    swallow the exception, fall back to the template-rendered content, and
+    still complete the publish loop so ``task.last_run_at`` is updated.
+    """
+    session = AsyncMock(spec=AsyncSession)
+    session.get = AsyncMock(return_value=_fake_account())
+
+    monkeypatch.setattr("app.scheduler.runner.risk_evaluate", AsyncMock(
+        return_value=SimpleNamespace(allowed=True, reason="ok")
+    ))
+    publish_result = PublishResult(success=True, external_id="ext-fallback")
+    fake_adapter = SimpleNamespace(publish=AsyncMock(return_value=publish_result))
+    monkeypatch.setattr("app.scheduler.runner.registry.get", lambda ch: fake_adapter)
+
+    template_content = ContentItem(
+        title="template-title",
+        body="template-body",
+        images=[],
+        topics=[],
+        extra={},
+    )
+    monkeypatch.setattr("app.content_factory.factory.render", lambda tpl: template_content)
+    monkeypatch.setattr("app.content_factory.factory.load_template", lambda key: SimpleNamespace(
+        key=key, title_prefix="p", body="b", topics=[], images=[], video=None, extra={}
+    ))
+
+    async def boom(task, content, *, persona=None):
+        raise RuntimeError("factory agent_rewrite exploded")
+
+    async def never_called(content, *, persona=None):
+        raise AssertionError("maybe_rewrite should not be reached when agent_rewrite raises")
+
+    monkeypatch.setattr("app.content_factory.factory.agent_rewrite", boom)
+    monkeypatch.setattr("app.content_factory.factory.maybe_rewrite", never_called)
+
+    task = _fake_task(use_ai=True, ai_mode="agent", persona="温柔学姐")
+
+    # Must not raise -- the runner swallows factory exceptions.
+    publishes = await run_task_once(session, task)
+
+    assert len(publishes) == 1
+    # The Publish row must record the template-rendered title (i.e. fallback
+    # content was used, not whatever the agent would have produced).
+    assert publishes[0].title == "template-title"
+    assert publishes[0].external_id == "ext-fallback"
+
+
+@pytest.mark.asyncio
+async def test_unknown_ai_mode_falls_back_to_rewrite_with_warning(monkeypatch):
+    """When ``task.ai_mode`` is set to an unknown value, the runner must
+    fall back to ``factory.maybe_rewrite`` and not silently skip rewriting.
+    """
+    session = AsyncMock(spec=AsyncSession)
+    session.get = AsyncMock(return_value=_fake_account())
+
+    monkeypatch.setattr("app.scheduler.runner.risk_evaluate", AsyncMock(
+        return_value=SimpleNamespace(allowed=True, reason="ok")
+    ))
+    publish_result = PublishResult(success=True, external_id="ext-unknown-mode")
+    fake_adapter = SimpleNamespace(publish=AsyncMock(return_value=publish_result))
+    monkeypatch.setattr("app.scheduler.runner.registry.get", lambda ch: fake_adapter)
+
+    monkeypatch.setattr("app.content_factory.factory.render", lambda tpl: _fake_content())
+    monkeypatch.setattr("app.content_factory.factory.load_template", lambda key: SimpleNamespace(
+        key=key, title_prefix="p", body="b", topics=[], images=[], video=None, extra={}
+    ))
+
+    called = {"agent": 0, "maybe": 0}
+
+    async def fake_agent_rewrite(task, content, *, persona=None):
+        called["agent"] += 1
+        return content
+
+    async def fake_maybe_rewrite(content, *, persona=None):
+        called["maybe"] += 1
+        return content
+
+    monkeypatch.setattr("app.content_factory.factory.agent_rewrite", fake_agent_rewrite)
+    monkeypatch.setattr("app.content_factory.factory.maybe_rewrite", fake_maybe_rewrite)
+
+    # Use a completely unknown mode string (not "agent" / "rewrite").
+    task = _fake_task(use_ai=True, ai_mode="mystery-mode", persona="酷飒辣妹")
+    publishes = await run_task_once(session, task)
+
+    assert len(publishes) == 1, "runner must still complete the publish loop"
+    assert called["agent"] == 0, "unknown ai_mode must NOT trigger agent_rewrite"
+    assert called["maybe"] == 1, "unknown ai_mode must fall back to maybe_rewrite"
