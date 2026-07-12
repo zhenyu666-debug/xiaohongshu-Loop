@@ -1414,3 +1414,51 @@ npm run build
   - v0.6.5 直推 600s → lfs 推 <60s（10x）
   - v0.6.7 也是
 - **下一步**: 先 `git lfs install`（用户级别）+ 写 .gitattributes + git lfs track + add + commit + push
+
+### item: 实际跑 LFS 迁移 (v0.6.7 MSI)
+- **status**: done (commit 8ae6bec, pushed, origin/main = 8ae6bec)
+- **背景发现 (LOOP-STATE 被之前 session 提前做过一半)**:
+  - `.gitattributes` **已在 commit 5e817fb 时就加了** (`*.exe` + `*.zip` + `installer/output/*.msi` + `*.exe` + `*.zip` 全 lfs-track)
+  - `installer/output/xhs-saas-console-0.6.{0,1,2,3,4,5}.msi` 6 个**早就 LFS-tracked**——LFS pointer + remote oid 都齐
+  - 唯一缺的是 **v0.6.7 MSI**（build 完后只走 `gh release upload`，没 commit 过 git）
+- **改动** (1 file, +3/-0):
+  - `installer/output/xhs-saas-console-0.6.7.msi` 166.8 MB 加入 git index；LFS filter 自动把它转成 LFS pointer (3 行文本)
+  - SHA256 在 LFS pointer 上 = `c5370893...d69`；certutil 算磁盘文件 = `c5370893...d69` → **完全相等**，意味着 LFS object 会跟已发布的 GitHub release asset byte-identical
+  - commit `8ae6bec chore(release): track v0.6.7 MSI via Git LFS for fast push`
+  - push 成功：`1c6f25b..8ae6bec main -> main`
+- **实测 LFS push 速度**:
+  ```
+  ==> start push at 09:01:03
+  Uploading LFS objects: 100% (1/1), 167 MB | 309 KB/s, done.
+  ==> push took 601.9s
+  1c6f25b..8ae6bec  main -> main
+  ```
+  - **601.9s 总耗时 = 跟 v0.6.5 直推 git 的 600s 几乎一样**
+  - **LFS 没有 10x 加速！** 上行带宽瓶颈在 ISP→GitHub 链路，309 KB/s
+  - LOOP-STATE 之前说 "600s → lfs 应该 <60s" 的预期是错的：这个仓库的瓶颈是网络 egress，不是 git 的 object pack/unpack
+- **结论 / 价值**:
+  - v0.6.7 现在 git-tracked, `git pull` 会拿到完整的 .msi 文件 (LFS 自动 smudge)
+  - 仓库总大小没明显涨 (LFS 对象不计入 git repo size)
+  - 但 push 速度**没改善**，下次要快还是得靠本地先 push 到 git-annex/local NAS 之类
+- **下次注意**:
+  - **先 `git ls-files <file>` + 看 pointer 还是 blob** 判断是不是 LFS-tracked；pointer 内容是固定的 "version https://git-lfs.github.com/spec/v1\noid sha256:<hex>\nsize <int>\n"
+  - **certutil -hashfile** 比 PowerShell `Get-FileHash` 在大文件上稳很多 (avoid 编码 race)
+  - **LFS 速度依赖网络**，不是 git 本身优化；如果目标是「让 release 发布更快」，更靠谱的路线是：
+    - 不重复上传：v0.6.5 + v0.6.7 内容几乎一样 (PyInstaller bundle 没变)，只 diff 在 .wxs GUID + CAB 压缩，差异 < 1%；用 `gh release upload --clobber` 复用已有 asset
+    - 或者走 `actions/upload-artifact@v4` 用 GitHub Actions 自己当 CDN
+    - 或者本地 web-server (rclone serve) 分发
+
+### 优先级（最新）
+|| 优先级 | 待办 | 状态 |
+||---|---|---|
+|| P0 | xhs-saas backend CI 全绿 | ⚠️ ruff 绿，pytest 因 numpy 缺失挂；patch 就绪，token scope 拦截中 |
+|| P0 | 修 CI workflow 文件 (data-lakehouse / donor-screener-pbp) | ❌ out-of-scope per AGENTS.md |
+|| P1 | runner.py 接入 Task.ai_mode='agent' 分支 | ✅ done (4933ad0 加 hardening + 2 tests) |
+|| P1 | MSI release via Git LFS | ✅ done (8ae6bec，v0.6.7 加 LFS tracking；速度没明显改善但代码已正确) |
+|| P2 | candle CNDL1098 cosmetic | ✅ done (commit 3ada929；今次 dry-run 复测 0 warning) |
+|| P2 | 双 MSI release 策略 | ❌ 仍 needs user（v0.6.5 + v0.6.7 是否合并） |
+|| P1 | 真实 LLM 流式端到端 | ❌ test_real_llm.py 已就位（skip when no key），需要 SiliconFlow key 验证 |
+|| P2 | 压力测试入 CI nightly | ❌ nightly 频率未定，runner 未就位 |
+
+### 下次注意 (再补一条)
+- "应该快 10x" 的想法在网络瓶颈面前是错的；LFS 解决的是**仓库体积**（git clone 不必 tar 整个 MSI 历史），不是**单次 push 的 wall-clock**——下次写 LOOP-STATE 描述 LFS 收益时不要再用"×10 speedup"这种话
