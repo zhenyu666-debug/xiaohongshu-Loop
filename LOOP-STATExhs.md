@@ -1461,4 +1461,85 @@ npm run build
 || P2 | 压力测试入 CI nightly | ❌ nightly 频率未定，runner 未就位 |
 
 ### 下次注意 (再补一条)
-- "应该快 10x" 的想法在网络瓶颈面前是错的；LFS 解决的是**仓库体积**（git clone 不必 tar 整个 MSI 历史），不是**单次 push 的 wall-clock**——下次写 LOOP-STATE 描述 LFS 收益时不要再用"×10 speedup"这种话
+- **不要 over-scope 估 LFS 价值**：网络瓶颈场景下 LFS ≠ 10× 加速，下次再写 LOOP-STATE 时直接写 "500–600s cold push to GitHub LFS, same as raw, but repo stays slim"
+- **PowerShell AMSI 在大 stdout 下会 crash** (`System.AccessViolationException` at `AmsiNativeMethods.AmsiScanBuffer`)：用 `python ... > file.log 2>&1; Write-Host $LASTEXITCODE` 而不是 `python ... | Out-File`，避免 PS 反复扫 stdout 触发 AMSI 拦截器崩溃
+
+## Session 2026-07-12 下午 3 (今次 3) - workflow patch 准备 (push 仍需用户)
+
+### 背景
+- 上一轮 (8ae6bec + 4730399) 把 MSI LFS + LOOP doc 推上去了
+- 剩下的 P0 (`xhs-saas backend CI`) 和 P2 (stress test nightly) 都碰 `.github/workflows/`，被 OAuth token `workflow` scope 拦截
+- 读 CI-WORKFLOW-PATCH-NEEDS-SCOPE.md 确认：之前 session 试过，push 被拒，已 reset commit
+- **这次不直接 push**（避免 commit 但本地 stuck 状态），改成"准备好 diff + 验证 + 留给用户 apply"
+
+### item: 复核 workflow numpy 问题
+- **status**: done (验证完毕，无需 push 验证)
+- **确认诊断**:
+  - `xiaohongshu-saas/pyproject.toml:44` `numpy>=1.24` 在 `[ai]` extra 里，不在 `[dev]`
+  - `tests/test_ai_rag_chroma.py` `import numpy`（只有这一个测试用 numpy；但 collection 时就算没跑也会 ImportError）
+  - 本地 Python 已经有 numpy（所以之前 207 测试通过），但 fresh CI runner `pip install -e ".[dev]"` 不会拉 numpy → pytest collection 失败 → CI 红
+- **结论**: 一行 patch：`pip install -e ".[dev]"` → `pip install -e ".[dev,ai]"` 即可修
+
+### item: 在同一 patch 里加 nightly stress job
+- **status**: done (drafted in scratch, cannot push)
+- **思路**: `tests/stress_test_consolidated_v2.py` 已存在，本地跑 210s 全绿 (STATUS: ALL SYSTEMS ROBUST)；加个 `cron: '0 4 * * *'` 触发 + `if: github.event_name == 'workflow_dispatch' || 'schedule'` 跳过 PR CI；stress log 上传 artifact (30 天留存)
+- **改动** (相对 origin/main = 4730399, 相对当前 `ea2ec3f`):
+  - line 33: `pip install -e ".[dev]"` → `pip install -e ".[dev,ai]"` + 注释说明为什么
+  - line 9 (新增): `workflow_dispatch:` + `schedule:` triggers
+  - line 33 (新增 job): `xhs-saas-stress-nightly:` 35 行 step block
+
+### item: 本地 dry-run 验证 stress test
+- **status**: done
+- **run**:
+  ```bash
+  cd xiaohongshu-saas
+  python -u tests/stress_test_consolidated_v2.py > C:/temp/stress-run.log 2>&1
+  # exit 0, 210s, 49 行 summary log
+  ```
+- **关键指标 (作为 baseline)**:
+  - `short_term_qps:    153`
+  - `long_term_qps:     138`
+  - `semantic_qps:      83`
+  - `episodic_qps:      57`
+  - `rag_qps:           4248`
+  - `coordinator_tps:   98342`
+  - `mcp_msgs_per_sec:  251080`
+  - `STATUS: ALL SYSTEMS ROBUST`
+- **CI 预期**: ubuntu-latest + python 3.11 + `.[dev,ai]` 应在 ~5 分钟跑完（ubuntu runner 比本地 9.4s 启动快；numpy/chromadb 装包时间 ~1.5 分钟）；15-min timeout 足够
+
+### item: 文件落地 (off-tree in repo scratch)
+- **status**: done (under `installer/build/workflow-patch/`, gitignored)
+- **路径**:
+  - `installer/build/workflow-patch/xhs-saas-ci.yml` (4,725 bytes) — patched full file，YAML valid (5 jobs, 4 triggers)
+  - `installer/build/workflow-patch/workflow.patch` (2,734 bytes) — `git diff --no-index` generated patch
+- **不能在 repo 里 apply** 因为 `.github/workflows/*.yml` 文件 push 被 scope 拒；放 `installer/build/` 是 AGENTS.md 允许的 in-scope path（`.gitignore:146` 忽略）
+
+### 为什么这一步不是 done 的
+- OAuth token 缺 `workflow` scope，**任何**对 `.github/workflows/*.yml` 的 push 都会被 GitHub 协议层 reject（403 / refusing to allow an integration to create/update workflow），跟分支、commit message 无关
+- 我已经验过：`git push origin main` 对其他文件 ok；对 workflow 文件 push，会在 *协议交换阶段* (不是 commit 阶段) 被拒
+- 所以这个 item 的"finish" = 你来 push
+
+### 你要怎么 finish (一键 3 步)
+1. **从 PR 视角**:
+   ```bash
+   cd C:/Users/Hasee/.qclaw/workspace/get_jobs
+   cp installer/build/workflow-patch/xhs-saas-ci.yml .github/workflows/
+   git add .github/workflows/xhs-saas-ci.yml
+   git commit -m "ci(backend): install [ai] extras + nightly stress job"
+   git push origin main
+   ```
+   （前提：你当前账号有 workflow scope；如果你 push 自己的 repo，直接 push main 也行）
+2. **或者**: 用 `gh workflow run` 立即手动触发 stress job，验证 nightly 路径无 syntax 错
+3. **或者**: 重新生成 PAT 包含 workflow scope（`gh auth refresh -s workflow`），告诉我，我就能 push
+
+### 优先级（最新）
+|| 优先级 | 待办 | 状态 |
+||---|---|---|
+|| P0 | xhs-saas backend CI 全绿 | ⚠️ patch ready at `installer/build/workflow-patch/`，等用户 push |
+|| P0 | 修 CI workflow 文件 (data-lakehouse / donor-screener-pbp) | ❌ out-of-scope per AGENTS.md |
+|| P1 | runner.py 接入 Task.ai_mode='agent' 分支 | ✅ done (4933ad0) |
+|| P1 | MSI release via Git LFS | ✅ done (8ae6bec) |
+|| P2 | candle CNDL1098 cosmetic | ✅ done (3ada929) |
+|| P2 | 双 MSI release 策略 | ❌ 仍 needs user（v0.6.5 + v0.6.7 是否合并） |
+|| P1 | 真实 LLM 流式端到端 | ❌ test_real_llm.py 已就位（skip when no key），需要 SiliconFlow key 验证 |
+|| P2 | 压力测试入 CI nightly | ⚠️ patch 含在同一份 workflow patch 里 (`xhs-saas-stress-nightly` job, cron `0 4 * * *`)；等 push |
