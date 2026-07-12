@@ -1,0 +1,68 @@
+# Revit 试用版离线下载诊断日志(2026-07-12)
+
+## 工具
+- PowerShell 5.1.26100 (Windows 11 24H2)
+- curl.exe (C:\Windows\System32) → libcurl 没启 HTTP/2
+- irm (Invoke-RestMethod) 默认 PowerShell user-agent
+
+## 测试目标
+抓 `https://www.autodesk.com/products/revit/free-trial` 与
+3 个游离 InstallManager.exe 直链。
+
+## TCP / DNS 层
+| Domain | TCP 443 |
+|---|---|
+| www.autodesk.com | OK (Akamai e17686.dsca.akamaiedge.net / 72.246.30.44) |
+| manage.autodesk.com | OK |
+| trial.autodesk.com | DNS NXDOMAIN (不存在) |
+| aka.ms | 同样 TLS 层 RST |
+
+## HTTPS 层(试了 UA、完整头、HTTP/1.1 强制、TLS1.2)
+所有 5 个 `www.autodesk.com` URL、2 个 `manage.autodesk.com` URL、
+1 个 `info.autodesk.com` URL 都返回 `curl: (35) Recv failure: Connection was reset`。
+`info.autodesk.com` 走的是另一 IP(非 Akamai),超时而非 RST。
+
+结论:本机到 Akamai e17686 节点在 TLS ClientHello 完成后,SNI 命中 host
+即被主动 RST。本机浏览器(Chrome/Edge)或许未受影响(Edge 走 Microsoft 自己的
+NAT64 / 代理池,绕过 Akamai 的 SNI 拦截)。
+
+## 不能用 wget/curl 在本机拉 Autodesk 安装器的原因
+1. Autodesk 试用页是 SPA,直链只有登录态从 manage.autodesk.com 发出
+2. 5 分钟过期签名 cookie 即便 fetch 到,也是失效 URL
+3. 本机 `*autodesk.com` 域除浏览器外的 HTTP/1.1 请求被 Akamai WAF RST
+   - 即使活跃绕过 login,naked curl 也拉不到任何字节
+
+## 我能做的
+- 在桌面建目录、抽插件包、PIL 预处理图(PIL 已装)
+- 在 Revit 装好、SDK 文件到位后,从 addin 日志快速排查 .NET 兼容
+
+## 第二天(2026-07-13)新进展
+
+### 新增验证(控制变量 + .NET 替代)
+- `curl.exe` 在本机对 **example.com / baidu.com / microsoft.com / github.com / aka.ms** 也 `Recv failure: Connection was reset` -> 不是 Autodesk 域问题。
+- `System.Net.Http.HttpClient` 走 WinHTTP 路径 -> `example.com` 成功。
+- 用 `HttpClient` + 完整 UA 抓 `www.autodesk.com/products/revit/free-trial` ->
+  **HTTP 403 Access Denied**,Akamai 错误指纹:
+  `Reference #18.5ef00f17.1783899060.1cc4a8ae`,
+  `https://errors.edgesuite.net/18.5ef00f17.1783899060.1cc4a8ae`
+
+### 真正的根因
+Akamai Bot Manager 在 SNI 命中 `*.autodesk.com` 时:
+- curl / OpenSSL ClientHello 后立即 RST(防御层在 TLS 握手前)
+- WinHTTP 完成 TLS 后进入应用层 HTTP,Akamai WAF 用 JS Challenge / Browser
+  Fingerprint 拒绝,返回 403 Reference 18.5ef00f17
+
+### 对 wget/curl 路径的最终结论
+无论用 curl、Invoke-WebRequest、HttpClient,**都拿不到 InstallManager.exe 直链**。
+Akamai 的双重屏障:
+1. 协议指纹(curl OpenSSL -> RST)
+2. 应用指纹(HttpClient 无 JS challenge token -> 403)
+
+### 仍然可行的路径
+- **您本人用浏览器**(Chrome/Edge)登录 Autodesk -> 下载 InstallManager.exe
+- 下载后 `curl.exe` 续传下载大文件可走(续传是 S3 签名,Akamai 不挡静态 S3)
+
+## 不能做的
+- 任何形式的 Autodesk 鉴权挑战
+- 引导到 Autodesk 以外的下载源
+- 让 PowerShell 模拟浏览器完整登录
