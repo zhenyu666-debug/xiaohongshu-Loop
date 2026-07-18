@@ -1,0 +1,5 @@
+# Optional dev / visual stack used locally:
+#   pip install -e ".[dev,viz]"
+#
+# The runtime core of fraud-risk-engine intentionally stays stdlib-friendly
+# so it can run in environments where PyPI / docker mirrors are unreachable.

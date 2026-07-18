@@ -1,0 +1,300 @@
+"""FastAPI surface for fraud-risk-engine.
+
+Endpoints:
+
+- ``GET  /api/health``     — liveness + TigerGraph reachability
+- ``GET  /api/config``     — current settings (no secrets)
+- ``POST /api/dataset``    — build a fresh synthetic dataset, persist to
+                             ``data/seed/`` (idempotent for a given seed)
+- ``GET  /api/dataset``    — return dataset counts + manifest
+- ``POST /api/loader/run`` — perform ping / create-schema / install-queries /
+                             load-dataset (all four stages optional via body)
+- ``POST /api/detector/run`` — run all detection algorithms; body controls
+                             which backend
+- ``GET  /api/detector/latest`` — last detection result
+- ``GET  /api/memory/static`` — static decision memory
+- ``GET  /api/memory/dynamic`` — dynamic state
+- ``GET  /`` — serves the React-free static frontend at ``/ui/index.html``
+"""
+
+from __future__ import annotations
+
+import json
+import time
+import uuid
+from datetime import datetime, timezone
+from pathlib import Path
+from typing import Any
+
+from fastapi import FastAPI, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse, JSONResponse
+from fastapi.staticfiles import StaticFiles
+from pydantic import BaseModel, Field
+
+from .config import Settings, get_settings
+from .loader.synth_generator import (
+    GeneratedDataset,
+    build_dataset,
+    dataset_to_csv_bundles,
+    dataset_to_jsonl_bundles,
+)
+from .loader.tg_loader import (
+    LoaderResult,
+    ensure_schema,
+    install_queries,
+    load_dataset,
+    ping as tg_ping,
+)
+from .detection.local_detector import (
+    run_local_detector,
+    snapshot_from_dataset,
+)
+from .detection.models import DetectionRun
+from .detection.tg_detector import TigerGraphDetector, run_remote_detector
+
+
+# ---------------------------------------------------------------------------
+# App factory
+# ---------------------------------------------------------------------------
+
+VERSION = "0.1.0"
+STATE: dict[str, Any] = {
+    "latest_run": None,
+    "latest_dataset": None,
+    "latest_run_id": None,
+}
+
+
+def create_app(settings: Settings | None = None) -> FastAPI:
+    settings = settings or get_settings()
+    app = FastAPI(
+        title="fraud-risk-engine",
+        version=VERSION,
+        description="TigerGraph-backed financial fraud risk detection engine.",
+    )
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=settings.cors_origin_list,
+        allow_credentials=True,
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
+
+    register_routes(app, settings)
+    register_frontend(app, settings)
+    return app
+
+
+# ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
+
+
+DATA_SEED_DIR = Path(__file__).resolve().parents[2] / "data" / "seed"
+
+
+def _now_iso() -> str:
+    return datetime.now(timezone.utc).isoformat(timespec="seconds")
+
+
+def _persist_dataset(ds: GeneratedDataset, root: Path) -> dict[str, Any]:
+    root.mkdir(parents=True, exist_ok=True)
+    jsonl = dataset_to_jsonl_bundles(ds, root / "jsonl")
+    csv = dataset_to_csv_bundles(ds, root / "csv")
+    manifest = {
+        "generated_at": _now_iso(),
+        "totals": ds.counts(),
+        "jsonl": jsonl,
+        "csv": csv,
+        "planted_rings": ds.planted_rings,
+    }
+    (root / "manifest.json").write_text(
+        json.dumps(manifest, ensure_ascii=False, indent=2),
+        encoding="utf-8",
+    )
+    return manifest
+
+
+def _build_dataset_from_settings(settings: Settings) -> GeneratedDataset:
+    return build_dataset(
+        accounts=settings.synth_accounts,
+        devices=settings.synth_devices,
+        merchants=settings.synth_merchants,
+        transactions=settings.synth_transactions,
+        fraud_rings=settings.synth_fraud_rings,
+        seed=settings.synth_seed,
+    )
+
+
+# ---------------------------------------------------------------------------
+# Request models
+# ---------------------------------------------------------------------------
+
+
+class DatasetBuildRequest(BaseModel):
+    seed: int | None = Field(default=None)
+    accounts: int | None = Field(default=None)
+    devices: int | None = Field(default=None)
+    merchants: int | None = Field(default=None)
+    transactions: int | None = Field(default=None)
+    fraud_rings: int | None = Field(default=None)
+
+
+class LoaderRunRequest(BaseModel):
+    stages: list[str] = Field(default_factory=lambda: ["ping", "schema", "queries", "load"])
+    persist_locally: bool = True
+
+
+class DetectorRunRequest(BaseModel):
+    backend: str = Field(default="auto")
+    top_k: int = Field(default=50)
+
+
+# ---------------------------------------------------------------------------
+# Routes
+# ---------------------------------------------------------------------------
+
+
+def register_routes(app: FastAPI, settings: Settings) -> None:
+
+    @app.get("/api/health")
+    def health() -> dict[str, Any]:
+        tg = tg_ping(settings)
+        return {
+            "ok": True,
+            "service": "fraud-risk-engine",
+            "version": VERSION,
+            "tigergraph": tg.as_dict(),
+            "now": _now_iso(),
+        }
+
+    @app.get("/api/config")
+    def config() -> dict[str, Any]:
+        s = get_settings().to_dict()
+        s["latest_run_id"] = STATE["latest_run_id"]
+        return s
+
+    @app.post("/api/dataset")
+    def build_dataset_endpoint(req: DatasetBuildRequest | None = None) -> dict[str, Any]:
+        req = req or DatasetBuildRequest()
+        # temporarily mutate settings if user supplied overrides
+        s = get_settings()
+        kwargs: dict[str, Any] = dict(
+            accounts=req.accounts or s.synth_accounts,
+            devices=req.devices or s.synth_devices,
+            merchants=req.merchants or s.synth_merchants,
+            transactions=req.transactions or s.synth_transactions,
+            fraud_rings=req.fraud_rings or s.synth_fraud_rings,
+            seed=req.seed if req.seed is not None else s.synth_seed,
+        )
+        ds = build_dataset(**kwargs)
+        manifest = _persist_dataset(ds, DATA_SEED_DIR)
+        STATE["latest_dataset"] = ds
+        return {"ok": True, "manifest": manifest}
+
+    @app.get("/api/dataset")
+    def dataset_summary() -> dict[str, Any]:
+        manifest_path = DATA_SEED_DIR / "manifest.json"
+        if manifest_path.exists():
+            return json.loads(manifest_path.read_text(encoding="utf-8"))
+        return {"ok": True, "detail": "no dataset yet — POST /api/dataset first"}
+
+    @app.post("/api/loader/run")
+    def loader_run(req: LoaderRunRequest | None = None) -> dict[str, Any]:
+        req = req or LoaderRunRequest()
+        stages = [s.strip() for s in req.stages]
+        results: dict[str, dict[str, Any]] = {}
+
+        if "ping" in stages:
+            results["ping"] = tg_ping(get_settings()).as_dict()
+        if "schema" in stages:
+            results["schema"] = ensure_schema(get_settings()).as_dict()
+        if "queries" in stages:
+            results["queries"] = install_queries(get_settings()).as_dict()
+        if "load" in stages:
+            ds = STATE.get("latest_dataset")
+            if ds is None:
+                ds = _build_dataset_from_settings(get_settings())
+                STATE["latest_dataset"] = ds
+                if req.persist_locally:
+                    _persist_dataset(ds, DATA_SEED_DIR)
+            results["load"] = load_dataset(ds, get_settings()).as_dict()
+        return {"ok": True, "stages": results}
+
+    @app.post("/api/detector/run")
+    def detector_run(req: DetectorRunRequest | None = None) -> dict[str, Any]:
+        req = req or DetectorRunRequest()
+        backend = req.backend
+
+        if backend == "tigergraph":
+            run = TigerGraphDetector(get_settings()).run(top_k=req.top_k)
+        elif backend == "local":
+            ds = STATE.get("latest_dataset") or _build_dataset_from_settings(get_settings())
+            run = run_local_detector(
+                ds,
+                ring_min_len=get_settings().thresh_ring_min_len,
+                shared_device_min=get_settings().thresh_shared_device_min,
+                burst_min_count=get_settings().thresh_burst_tx_count,
+                top_k=req.top_k,
+            )
+        else:  # "auto"
+            ds = STATE.get("latest_dataset") or _build_dataset_from_settings(get_settings())
+            run = run_remote_detector(fallback_dataset=ds, settings=get_settings())
+
+        STATE["latest_run"] = run
+        STATE["latest_run_id"] = run.run_id
+        return run.to_dict()
+
+    @app.get("/api/detector/latest")
+    def detector_latest() -> dict[str, Any]:
+        run: DetectionRun | None = STATE.get("latest_run")
+        if not run:
+            raise HTTPException(status_code=404, detail="no run yet — POST /api/detector/run")
+        return run.to_dict()
+
+    @app.get("/api/memory/static")
+    def memory_static() -> dict[str, Any]:
+        # The static memory file is checked in at the repo root.
+        from .memory.static_memory import load_static_memory
+
+        sm = load_static_memory()
+        return sm
+
+    @app.get("/api/memory/dynamic")
+    def memory_dynamic() -> dict[str, Any]:
+        from .memory.dynamic_memory import build_dynamic_memory
+
+        run: DetectionRun | None = STATE.get("latest_run")
+        latest = run.to_dict() if run else None
+        return build_dynamic_memory(latest, STATE.get("latest_dataset"))
+
+
+# ---------------------------------------------------------------------------
+# Frontend
+# ---------------------------------------------------------------------------
+
+
+def register_frontend(app: FastAPI, settings: Settings) -> None:
+    # Path(__file__) is .../fraud-risk-engine/app/api.py, so:
+    # parents[0] == app/, parents[1] == fraud-risk-engine/.
+    frontend_dir = Path(__file__).resolve().parents[1] / "frontend"
+    if not frontend_dir.exists():
+        return
+
+    @app.get("/", include_in_schema=False)
+    def root() -> Any:
+        index = frontend_dir / "index.html"
+        if index.exists():
+            return FileResponse(index)
+        return JSONResponse({"detail": "no frontend bundled"}, status_code=404)
+
+    app.mount(
+        "/ui",
+        StaticFiles(directory=str(frontend_dir), html=True),
+        name="frontend",
+    )
+
+
+# Module-level default FastAPI app for ``uvicorn fraud_risk_engine.api:app``.
+app = create_app()
