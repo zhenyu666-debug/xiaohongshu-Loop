@@ -47,6 +47,12 @@ stage 9 — 多跳关系扩展已 committed（BFS identity + funds-flow，4 API 
 - [x] 实时性：离线批量分析（MVP）
 - [x] 隐私：合成数据，无 PII
 
+## 待确认问题清单（续）
+
+|| 编号 | 议题 | 状态 |
+||---|---|---|
+|| NM-4 | **远程仓库 push** — `git push origin tiger/stage5-backtest-harness` 失败（`Connection was reset`，host → github.com:443 网络层 reset）。仓库当前 remote = `xiaohongshu-Loop`。**fraud-risk-engine 应该在哪个 repo？** 两个选项：(A) 推入现有 `xiaohongshu-Loop`；(B) 在 GitHub 新建独立 `Tigergraph.git` repo 然后推送。请告知选择，推送后我执行 `--no-ff` 合 main 并打 tag | **needs me — blocked until you choose A or B and resolve network** |
+
 ## 进度日志
 
 - 2026-07-16 21:57 — 子任务完成：环境检查（b91af4b9）。结论：TigerGraph 全套工具未安装，Docker 已安装但未运行。
