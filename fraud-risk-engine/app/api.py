@@ -24,7 +24,7 @@ import time
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any, Literal
 
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
@@ -268,6 +268,76 @@ def register_routes(app: FastAPI, settings: Settings) -> None:
         run: DetectionRun | None = STATE.get("latest_run")
         latest = run.to_dict() if run else None
         return build_dynamic_memory(latest, STATE.get("latest_dataset"))
+
+    # ------------------------------------------------------------------
+    # Profile — multi-hop BFS
+    # ------------------------------------------------------------------
+
+    @app.get("/api/profile/{account_id}")
+    def profile_bfs(
+        account_id: str,
+        hops_identity: int = 3,
+        hops_funds: int = 4,
+        funds_direction: str = "both",
+        include_merchants: bool = False,
+    ) -> dict[str, Any]:
+        """Run both identity and funds-flow BFS on an account.
+
+        Returns a dict with ``identity`` and ``funds`` keys, each containing
+        a :class:`GraphSubgraph` (as dict).
+        """
+        ds: GeneratedDataset | None = STATE.get("latest_dataset")
+        if not ds:
+            raise HTTPException(
+                status_code=400,
+                detail="no dataset — POST /api/detector/run first to load a dataset",
+            )
+
+        from .profile.graph_search import bfs_identity, bfs_funds
+
+        identity = bfs_identity(account_id, ds, max_hops=hops_identity)
+        funds = bfs_funds(
+            account_id,
+            ds,
+            max_hops=hops_funds,
+            direction=funds_direction,  # type: ignore[arg-type]
+            include_merchants=include_merchants,
+        )
+        return {
+            "account_id": account_id,
+            "identity": identity.to_dict(),
+            "funds": funds.to_dict(),
+        }
+
+    @app.get("/api/profile/{account_id}/graph/{graph_type}")
+    def profile_single_graph(
+        account_id: str,
+        graph_type: Literal["identity", "funds"],
+        max_hops: int = 3,
+        funds_direction: str = "both",
+        include_merchants: bool = False,
+    ) -> dict[str, Any]:
+        """Fetch a single sub-graph for an account (``identity`` or ``funds``)."""
+        ds: GeneratedDataset | None = STATE.get("latest_dataset")
+        if not ds:
+            raise HTTPException(
+                status_code=400,
+                detail="no dataset — POST /api/detector/run first",
+            )
+
+        from .profile.graph_search import bfs_identity, bfs_funds
+
+        if graph_type == "identity":
+            result = bfs_identity(account_id, ds, max_hops=max_hops)
+        else:
+            result = bfs_funds(
+                account_id,
+                ds,
+                max_hops=max_hops,
+                direction=funds_direction,  # type: ignore[arg-type]
+                include_merchants=include_merchants,
+            )
+        return result.to_dict()
 
 
 # ---------------------------------------------------------------------------
