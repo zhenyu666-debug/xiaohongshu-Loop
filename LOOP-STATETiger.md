@@ -9,7 +9,7 @@ TigerGraph 金融欺诈风险项目：基于图数据库建模与分析金融交
 - 状态文件：仓库根目录的 `LOOP-STATETiger.md`
 
 ## 当前阶段
-stage 9 — 多跳关系扩展已 committed（BFS identity + funds-flow，4 API 测试 + 18 multihop 测试，pytest 56/56 绿，commit 3a93e60）；所有 stage 完成，待 push
+v0.2.0 — 所有 stage 完成，已 merge 到 main（commit `6ae2b95`），tag `v0.2.0` 已 push 到 origin。fraud-risk-engine 代码已落地 xiaohongshu-Loop repo。
 
 ## 已确认决策（2026-07-16）
 
@@ -51,7 +51,7 @@ stage 9 — 多跳关系扩展已 committed（BFS identity + funds-flow，4 API 
 
 || 编号 | 议题 | 状态 |
 ||---|---|---|
-|| NM-4 | **远程仓库 push** — `git push origin tiger/stage5-backtest-harness` 失败（`Connection was reset`，host → github.com:443 网络层 reset）。仓库当前 remote = `xiaohongshu-Loop`。**fraud-risk-engine 应该在哪个 repo？** 两个选项：(A) 推入现有 `xiaohongshu-Loop`；(B) 在 GitHub 新建独立 `Tigergraph.git` repo 然后推送。请告知选择，推送后我执行 `--no-ff` 合 main 并打 tag | **needs me — blocked until you choose A or B and resolve network** |
+|| NM-4 | **远程仓库 push** → resolved 2026-07-18 20:40，选 A（推入 xiaohongshu-Loop），`git remote` URL 嵌入 gh token 后 push 成功。`--no-ff` 合 main（`6ae2b95`），`v0.2.0` tag 已 push | **done** |
 
 ## 进度日志
 
