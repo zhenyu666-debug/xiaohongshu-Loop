@@ -1,0 +1,3 @@
+# TigerGraph financial fraud risk engine
+# Install the Python package locally:
+#   pip install -e ".[dev,viz]"

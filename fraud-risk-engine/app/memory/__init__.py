@@ -1,0 +1,1 @@
+"""Memory package — static + dynamic dual-layer markdown-backed memory."""

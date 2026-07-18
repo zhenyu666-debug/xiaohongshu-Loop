@@ -1,0 +1,49 @@
+[project]
+name = "fraud-risk-engine"
+version = "0.1.0"
+description = "TigerGraph-backed financial fraud risk detection engine with multi-view visualization."
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+authors = [{ name = "fraud-risk-engine authors" }]
+dependencies = [
+    # Only stdlib-friendly runtime deps. The pyTigerGraph SDK and Streamlit
+    # are deliberately NOT listed here so the package works in air-gapped CI
+    # without pulling from PyPI. See ``requirements_optional.txt`` for the
+    # optional dev/visual stack.
+    "fastapi>=0.110",
+    "uvicorn>=0.27",
+    "pydantic>=2.6",
+    "httpx>=0.27",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0",
+    "pytest-asyncio>=0.23",
+]
+viz = [
+    "streamlit>=1.32",
+    "plotly>=5.18",
+    "pandas>=2.0",
+]
+
+[project.scripts]
+fraud-risk-engine = "fraud_risk_engine.cli:main"
+
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["fraud_risk_engine*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"
+asyncio_mode = "auto"
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
