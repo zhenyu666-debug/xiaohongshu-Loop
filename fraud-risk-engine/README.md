@@ -4,7 +4,7 @@ TigerGraph-backed **financial fraud risk detection engine** with a
 **Multi-view + Dashboard + Investigation** visualization stack and a
 **dual-layer markdown memory**.
 
-> Status: v0.2.0 — all stages complete, 59 unit tests green.
+> Status: v0.3.0 — GDSL algorithms added, 74 unit tests green.
 
 ---
 
@@ -25,6 +25,16 @@ project models a fraud graph:
      inside a sliding window.
   4. **pageRankAccounts** — top-K by out-degree (a coarse centrality
      proxy that stays portable across TigerGraph versions).
+  5. **tg_wcc** — Weakly Connected Components (entity-resolution: maps
+     accounts in the same fraud-identity cluster).
+  6. **tg_lpcc** — Label Propagation Community Detection (finds tightly-knit
+     fraud rings without pre-specifying K).
+  7. **tg_jaccard** — Jaccard similarity scoring (shared-neighbor /
+     union-neighbor ratio for identity-link strength).
+  8. **tg_betweenness** — Betweenness centrality (identifies broker / mule
+     accounts sitting on many shortest paths).
+  9. **tg_closeness** — Closeness centrality (hub accounts well-connected
+     to many others).
 
 - **Visualisation.** Three layers (no JS framework, no CDN — works
   air-gapped):

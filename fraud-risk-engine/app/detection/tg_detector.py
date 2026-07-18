@@ -22,10 +22,15 @@ from .models import (
     DetectionRun,
     GraphSnapshot,
     RiskAlert,
+    betweenness_alert_from_gsql,
     burst_alert_from_gsql,
+    closeness_alert_from_gsql,
+    jaccard_alert_from_gsql,
+    lpcc_alert_from_gsql,
     pagerank_alert_from_gsql,
     ring_alert_from_gsql,
     shared_device_alert_from_gsql,
+    wcc_alert_from_gsql,
 )
 
 
@@ -134,6 +139,102 @@ class TigerGraphDetector:
                         alerts.append(a)
                 except httpx.HTTPError as exc:
                     detail_parts.append(f"pageRankAccounts={exc}")
+
+                # 5) Weakly Connected Components (entity-resolution helper)
+                try:
+                    res = _post_query(
+                        client,
+                        self.settings,
+                        "tg_wcc",
+                        {
+                            "v_type": "Account",
+                            "e_type": "SHARES_DEVICE",
+                            "max_iter": 10,
+                            "print_limit": 100,
+                        },
+                    )
+                    a = wcc_alert_from_gsql(res)
+                    if a:
+                        alerts.append(a)
+                except httpx.HTTPError as exc:
+                    detail_parts.append(f"tg_wcc={exc}")
+
+                # 6) Community Detection (Label Propagation)
+                try:
+                    res = _post_query(
+                        client,
+                        self.settings,
+                        "tg_lpcc",
+                        {
+                            "v_type": "Account",
+                            "e_type": "SHARES_DEVICE",
+                            "max_iter": 20,
+                            "seed": 42,
+                            "print_limit": 100,
+                        },
+                    )
+                    a = lpcc_alert_from_gsql(res)
+                    if a:
+                        alerts.append(a)
+                except httpx.HTTPError as exc:
+                    detail_parts.append(f"tg_lpcc={exc}")
+
+                # 7) Jaccard Similarity (identity-link scoring)
+                try:
+                    res = _post_query(
+                        client,
+                        self.settings,
+                        "tg_jaccard",
+                        {
+                            "source_id": "A0",
+                            "target_id": "A1",
+                            "v_type": "Account",
+                            "e_type": "USES_DEVICE",
+                            "top_k": top_k,
+                        },
+                    )
+                    a = jaccard_alert_from_gsql(res)
+                    if a:
+                        alerts.append(a)
+                except httpx.HTTPError as exc:
+                    detail_parts.append(f"tg_jaccard={exc}")
+
+                # 8) Betweenness Centrality (broker / mule detection)
+                try:
+                    res = _post_query(
+                        client,
+                        self.settings,
+                        "tg_betweenness",
+                        {
+                            "v_type": "Account",
+                            "e_type": "SHARES_DEVICE",
+                            "sample_size": 0,
+                            "top_k": top_k,
+                        },
+                    )
+                    a = betweenness_alert_from_gsql(res)
+                    if a:
+                        alerts.append(a)
+                except httpx.HTTPError as exc:
+                    detail_parts.append(f"tg_betweenness={exc}")
+
+                # 9) Closeness Centrality (hub detection)
+                try:
+                    res = _post_query(
+                        client,
+                        self.settings,
+                        "tg_closeness",
+                        {
+                            "v_type": "Account",
+                            "e_type": "SHARES_DEVICE",
+                            "top_k": top_k,
+                        },
+                    )
+                    a = closeness_alert_from_gsql(res)
+                    if a:
+                        alerts.append(a)
+                except httpx.HTTPError as exc:
+                    detail_parts.append(f"tg_closeness={exc}")
 
         except Exception as exc:
             status = "degraded" if alerts else "unreachable"

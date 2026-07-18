@@ -7,10 +7,15 @@ well-formed GSQL and contain the expected query names.
 from __future__ import annotations
 
 from app.queries.fraud_queries import (
+    GSQL_BETWEENNESS,
     GSQL_BURST_TRANSACTIONS,
+    GSQL_CLOSENESS,
+    GSQL_JACCARD,
+    GSQL_LPCC,
     GSQL_PAGERANK_ACCOUNTS,
     GSQL_SHARED_DEVICE_RINGS,
     GSQL_TRANSACTION_RINGS,
+    GSQL_WCC,
 )
 from app.schema import EDGE_TYPES, GSQL_SCHEMA, VERTEX_TYPES
 
@@ -46,6 +51,11 @@ def test_each_query_has_create_query_and_print() -> None:
         GSQL_SHARED_DEVICE_RINGS,
         GSQL_BURST_TRANSACTIONS,
         GSQL_PAGERANK_ACCOUNTS,
+        GSQL_WCC,
+        GSQL_LPCC,
+        GSQL_JACCARD,
+        GSQL_BETWEENNESS,
+        GSQL_CLOSENESS,
     ):
         assert q.startswith("CREATE QUERY")
         assert "FOR GRAPH FraudRisk" in q
@@ -54,10 +64,14 @@ def test_each_query_has_create_query_and_print() -> None:
 
 def test_query_names_unique() -> None:
     names = []
-    for src in (GSQL_TRANSACTION_RINGS, GSQL_SHARED_DEVICE_RINGS,
-                GSQL_BURST_TRANSACTIONS, GSQL_PAGERANK_ACCOUNTS):
+    for src in (
+        GSQL_TRANSACTION_RINGS, GSQL_SHARED_DEVICE_RINGS,
+        GSQL_BURST_TRANSACTIONS, GSQL_PAGERANK_ACCOUNTS,
+        GSQL_WCC, GSQL_LPCC, GSQL_JACCARD,
+        GSQL_BETWEENNESS, GSQL_CLOSENESS,
+    ):
         first_line = src.splitlines()[0]
         # `CREATE QUERY foo( ...`
         assert "CREATE QUERY" in first_line
         names.append(first_line.split("QUERY", 1)[1].split("(", 1)[0].strip())
-    assert len(set(names)) == 4
+    assert len(set(names)) == len(names), f"Duplicate query names: {names}"

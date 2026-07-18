@@ -19,10 +19,15 @@ import httpx
 
 from ..config import Settings, get_settings
 from ..queries import (
+    GSQL_BETWEENNESS,
     GSQL_BURST_TRANSACTIONS,
+    GSQL_CLOSENESS,
+    GSQL_JACCARD,
+    GSQL_LPCC,
     GSQL_PAGERANK_ACCOUNTS,
     GSQL_SHARED_DEVICE_RINGS,
     GSQL_TRANSACTION_RINGS,
+    GSQL_WCC,
 )
 from ..schema import GSQL_SCHEMA
 from .synth_generator import GeneratedDataset
@@ -130,6 +135,11 @@ def install_queries(settings: Settings | None = None) -> LoaderResult:
         GSQL_SHARED_DEVICE_RINGS,
         GSQL_BURST_TRANSACTIONS,
         GSQL_PAGERANK_ACCOUNTS,
+        GSQL_WCC,
+        GSQL_LPCC,
+        GSQL_JACCARD,
+        GSQL_BETWEENNESS,
+        GSQL_CLOSENESS,
     ]
     results: list[dict] = []
     try:
