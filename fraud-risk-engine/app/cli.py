@@ -1,11 +1,13 @@
 """CLI entry point. Used as:
 
-    python -m fraud_risk_engine.cli             # help
-    python -m fraud_risk_engine.cli doctor      # check Python env
-    python -m fraud_risk_engine.cli build       # build + persist dataset
-    python -m fraud_risk_engine.cli detect      # run local detector
-    python -m fraud_risk_engine.cli serve       # launch FastAPI
-    python -m fraud_risk_engine.cli schema      # print GSQL schema
+    fraud-risk-engine              # help
+    fraud-risk-engine doctor       # check Python env
+    fraud-risk-engine build        # build + persist dataset
+    fraud-risk-engine detect       # run local detector
+    fraud-risk-engine serve        # launch FastAPI
+    fraud-risk-engine schema       # print GSQL schema
+
+(Or: python -m app.cli ...)
 """
 
 from __future__ import annotations

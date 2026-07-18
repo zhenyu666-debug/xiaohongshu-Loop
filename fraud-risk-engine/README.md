@@ -4,7 +4,7 @@ TigerGraph-backed **financial fraud risk detection engine** with a
 **Multi-view + Dashboard + Investigation** visualization stack and a
 **dual-layer markdown memory**.
 
-> Status: v0.1.0 — first end-to-end build, all 23 unit tests green.
+> Status: v0.2.0 — all stages complete, 59 unit tests green.
 
 ---
 
@@ -114,16 +114,18 @@ the API still serves everything using the in-memory fallback.
 
 ```bash
 pytest -q
-# 23 passed
+# 59 passed
 ```
 
 The test suite covers:
 
-- generator determinism + planted-ring invariants
-- GSQL schema + query strings
-- detection algorithms + GSQL post-processors
-- FastAPI surface via `TestClient`
-- static + dynamic memory roundtrips
+- generator determinism + planted-ring invariants (test_synth_generator)
+- GSQL schema + query strings (test_schema_and_queries)
+- detection algorithms + GSQL post-processors (test_detection)
+- FastAPI surface via `TestClient` (test_api)
+- static + dynamic memory roundtrips (test_memory)
+- multi-hop graph traversal: identity + funds flow (test_profile_multihop)
+- threshold sweep + HTML report rendering (test_backtest)
 
 ---
 

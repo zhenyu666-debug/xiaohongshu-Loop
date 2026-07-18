@@ -29,7 +29,7 @@ viz = [
 ]
 
 [project.scripts]
-fraud-risk-engine = "fraud_risk_engine.cli:main"
+fraud-risk-engine = "app.cli:main"
 
 [build-system]
 requires = ["setuptools>=68", "wheel"]
@@ -37,7 +37,11 @@ build-backend = "setuptools.build_meta"
 
 [tool.setuptools.packages.find]
 where = ["."]
-include = ["fraud_risk_engine*"]
+include = ["app*"]
+# Note: the source directory is named `app/`, not `fraud_risk_engine/`.
+# The project name is "fraud-risk-engine" but the Python package is "app".
+# To run from source without installing: `cd fraud-risk-engine && python -c "import sys; sys.path.insert(0,'.'); import uvicorn; uvicorn.run('app.api:app', port=8765)"`
+# Or use the start-server.bat script.
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
