@@ -26,13 +26,18 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Literal
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
 from .config import Settings, get_settings
+from .loader.paysim_data import gen_paysim_sample, sample_as_api_dict
+from .loader.bankfraud_loader import (
+    build_api_response as bankfraud_build,
+    load_full_data as bankfraud_load,
+)
 from .loader.synth_generator import (
     GeneratedDataset,
     build_dataset,
@@ -338,6 +343,41 @@ def register_routes(app: FastAPI, settings: Settings) -> None:
                 include_merchants=include_merchants,
             )
         return result.to_dict()
+
+    # ------------------------------------------------------------------
+    # PaySim — real-world-looking transaction graph (Kaggle-style)
+    # ------------------------------------------------------------------
+
+    @app.get("/api/paysim/sample")
+    def paysim_sample(
+        n: int = Query(default=500, ge=10, le=2000),
+        fraud_rate: float | None = Query(default=None),
+        seed: int = Query(default=42, ge=0),
+    ) -> dict[str, Any]:
+        """Return a PaySim-statistically-faithful transaction sample.
+
+        - n: number of transactions (default 500, max 2000)
+        - fraud_rate: override global fraud rate (e.g. 0.05 for 5%%)
+        - seed: RNG seed (default 42)
+        """
+        sample = gen_paysim_sample(n, fraud_rate_override=fraud_rate, seed=seed)
+        return sample_as_api_dict(sample)
+
+    # ------------------------------------------------------------------
+    # Bank Fraud — real banking dataset from local xlsx
+    # ------------------------------------------------------------------
+
+    @app.get("/api/bankfraud/sample")
+    def bankfraud_sample(
+        sample_size: int = Query(default=300, ge=50, le=500),
+        fraud_ratio: float = Query(default=0.5, ge=0.1, le=0.9),
+    ) -> dict[str, Any]:
+        """Serve the real Banking Fraud dataset (from local xlsx cache).
+
+        - sample_size: max graph nodes (default 300)
+        - fraud_ratio: fraction of fraud nodes in the sample (default 0.5)
+        """
+        return bankfraud_build(sample_size=sample_size, fraud_ratio=fraud_ratio)
 
 
 # ---------------------------------------------------------------------------

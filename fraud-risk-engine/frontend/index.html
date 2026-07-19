@@ -1,111 +1,13 @@
 <!doctype html>
 <html lang="en">
-<head>
-  <meta charset="utf-8" />
-  <title>fraud-risk-engine — Multi-view · Dashboard · Investigation</title>
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <link rel="stylesheet" href="./styles.css" />
-</head>
-<body>
-  <header class="topbar">
-    <div class="brand">
-      <span class="logo">⚡</span>
-      <span class="name">fraud-risk-engine</span>
-      <span class="badge" id="tigergraph-badge">TigerGraph ?</span>
-    </div>
-    <nav class="tabs">
-      <button class="tab active" data-view="multiview">Multi-view</button>
-      <button class="tab" data-view="dashboard">Dashboard</button>
-      <button class="tab" data-view="investigation">Investigation</button>
-      <button class="tab" data-view="memory">Memory</button>
-    </nav>
-    <div class="actions">
-      <button id="btn-refresh" class="primary">Refresh</button>
-    </div>
-  </header>
-
-  <main>
-    <!-- ====== Multi-view ====== -->
-    <section id="view-multiview" class="view active">
-      <div class="grid grid-3">
-        <div class="card">
-          <h3>Severity distribution</h3>
-          <svg id="svg-severity" viewBox="0 0 320 220" preserveAspectRatio="xMidYMid meet"></svg>
-        </div>
-        <div class="card">
-          <h3>Alert kind composition</h3>
-          <svg id="svg-kind" viewBox="0 0 320 220" preserveAspectRatio="xMidYMid meet"></svg>
-        </div>
-        <div class="card">
-          <h3>Risk score (top-15)</h3>
-          <svg id="svg-score" viewBox="0 0 320 220" preserveAspectRatio="xMidYMid meet"></svg>
-        </div>
-      </div>
-      <div class="card">
-        <h3>Graph overview</h3>
-        <p class="muted">Bipartite projection: Accounts (●) — Transactions (◇) — Accounts. Planted fraud rings are highlighted in red.</p>
-        <svg id="svg-graph" viewBox="0 0 1100 360" preserveAspectRatio="xMidYMid meet"></svg>
-      </div>
-    </section>
-
-    <!-- ====== Dashboard ====== -->
-    <section id="view-dashboard" class="view">
-      <div class="grid grid-4 kpis">
-        <div class="card kpi"><h4>Vertices</h4><div class="big" id="kpi-vertices">—</div></div>
-        <div class="card kpi"><h4>Edges</h4><div class="big" id="kpi-edges">—</div></div>
-        <div class="card kpi"><h4>Alerts</h4><div class="big" id="kpi-alerts">—</div></div>
-        <div class="card kpi"><h4>Backend</h4><div class="big" id="kpi-backend">—</div></div>
-      </div>
-      <div class="grid grid-2">
-        <div class="card">
-          <h3>Vertex mix</h3>
-          <table class="data" id="tbl-vertex"></table>
-        </div>
-        <div class="card">
-          <h3>Edge mix</h3>
-          <table class="data" id="tbl-edge"></table>
-        </div>
-      </div>
-      <div class="card">
-        <h3>Alerts</h3>
-        <table class="data" id="tbl-alerts"></table>
-      </div>
-    </section>
-
-    <!-- ====== Investigation ====== -->
-    <section id="view-investigation" class="view">
-      <div class="card">
-        <h3>Pick an alert</h3>
-        <p class="muted">Click a row below to focus. The Investigation view renders the involved accounts and their incident radius.</p>
-        <table class="data" id="tbl-investigation"></table>
-      </div>
-      <div class="card">
-        <h3>Focused alert</h3>
-        <div id="focus-title" class="big">—</div>
-        <p id="focus-description" class="muted">—</p>
-        <svg id="svg-focus" viewBox="0 0 900 320" preserveAspectRatio="xMidYMid meet"></svg>
-        <h4>Involved accounts</h4>
-        <div id="focus-involved" class="chip-list"></div>
-        <h4>Evidence</h4>
-        <pre id="focus-evidence" class="evidence"></pre>
-      </div>
-    </section>
-
-    <!-- ====== Memory ====== -->
-    <section id="view-memory" class="view">
-      <div class="grid grid-2">
-        <div class="card">
-          <h3>Static memory <span class="muted" id="static-meta">—</span></h3>
-          <pre id="md-static" class="md"></pre>
-        </div>
-        <div class="card">
-          <h3>Dynamic memory <span class="muted" id="dynamic-meta">—</span></h3>
-          <pre id="md-dynamic" class="md"></pre>
-        </div>
-      </div>
-    </section>
-  </main>
-
-  <script src="./app.js"></script>
-</body>
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/svg+xml" href="/vite.svg" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Graph Studio</title>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
 </html>
