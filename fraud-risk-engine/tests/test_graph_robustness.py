@@ -203,6 +203,8 @@ def test_compute_robustness_on_synthetic_ring() -> None:
     assert report.avg_degree == 2.0
     assert report.diameter_small == 2
     assert report.assortativity == pytest.approx(0.0, abs=1e-3)
+    # 4-cycle: spectral radius of an undirected n-cycle is exactly 2.
+    assert report.spectral_radius == pytest.approx(2.0, abs=1e-2)
 
 
 def test_compute_robustness_on_star() -> None:
@@ -213,6 +215,8 @@ def test_compute_robustness_on_star() -> None:
     assert report.edge_count == 5
     assert report.density == pytest.approx(2 * 5 / (6 * 5), rel=1e-3)
     assert report.assortativity < 0  # disassortative hub-and-spoke
+    # Star on 6 nodes: spectral radius = sqrt(5) ≈ 2.236 (closed form).
+    assert report.spectral_radius == pytest.approx(math.sqrt(5), rel=1e-2)
 
 
 def test_compute_robustness_on_empty_dataset() -> None:
@@ -225,6 +229,7 @@ def test_compute_robustness_on_empty_dataset() -> None:
     assert report.diameter_small is None
     assert report.clustering_coefficient == 0.0
     assert report.assortativity == 0.0
+    assert report.spectral_radius == 0.0
 
 
 def test_compute_robustness_on_full_dataset() -> None:
@@ -272,6 +277,7 @@ def test_robustness_report_to_dict_round_trip() -> None:
         "node_connectivity_estimate",
         "edge_connectivity",
         "assortativity",
+        "spectral_radius",
     ):
         assert key in d, f"missing key {key!r}"
 
@@ -342,6 +348,8 @@ def test_robustness_alert_low_connectivity_hub_and_spoke() -> None:
     assert "edge_connectivity" in alert.description
     # Evidence should expose all measures + thresholds
     assert alert.evidence["edge_connectivity"] == 1
+    assert alert.evidence["spectral_radius"] == report.spectral_radius
+    assert alert.evidence["spectral_radius"] > 0.0  # star has a dominant hub
     assert alert.evidence["triggered_kinds"] == [AlertKind.ROBUSTNESS_LOW_CONNECTIVITY.value]
     assert alert.evidence["thresholds"]["low_connectivity_threshold"] == 2
 

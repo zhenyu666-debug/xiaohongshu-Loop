@@ -52,6 +52,7 @@ class RobustnessReport:
     node_connectivity_estimate: int
     edge_connectivity: int
     assortativity: float
+    spectral_radius: float
 
     def to_dict(self) -> Dict[str, Any]:
         return asdict(self)
@@ -315,6 +316,7 @@ def compute_robustness(ds: "GeneratedDataset") -> RobustnessReport:
         node_connectivity_estimate=node_connectivity_lower_bound(adj),
         edge_connectivity=edge_connectivity_lower_bound(adj),
         assortativity=degree_assortativity(adj),
+        spectral_radius=spectral_radius_estimate(adj),
     )
 
 

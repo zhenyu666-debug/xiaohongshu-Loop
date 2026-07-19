@@ -195,8 +195,12 @@ def test_robustness_endpoint_returns_report_and_alert(monkeypatch) -> None:
             "node_connectivity_estimate",
             "edge_connectivity",
             "assortativity",
+            "spectral_radius",
         ):
             assert key in body["report"], f"missing {key!r} in report"
+        # spectral_radius is numeric and non-negative on any non-empty report
+        assert isinstance(body["report"]["spectral_radius"], (int, float))
+        assert body["report"]["spectral_radius"] >= 0.0
         # alert is either None or a dict
         assert body["alert"] is None or isinstance(body["alert"], dict)
 

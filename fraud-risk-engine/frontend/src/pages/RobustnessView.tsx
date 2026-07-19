@@ -15,6 +15,7 @@ interface RobustnessReport {
   node_connectivity_estimate: number;
   edge_connectivity: number;
   assortativity: number;
+  spectral_radius: number;
 }
 
 interface RobustnessAlert {
@@ -34,6 +35,7 @@ interface RobustnessAlert {
     edge_connectivity: number;
     node_connectivity_estimate: number;
     assortativity: number;
+    spectral_radius: number;
     triggered_kinds: string[];
     thresholds: Record<string, number>;
   };
@@ -172,6 +174,7 @@ function MeasuresTable({ report }: { report: RobustnessReport }) {
     formatMeasure('Edge connectivity', report.edge_connectivity, (n) => String(n), 'Min cut edges to disconnect', { low_max: 2 }),
     formatMeasure('Node connectivity', report.node_connectivity_estimate, (n) => String(n), 'Min cut vertices to disconnect'),
     formatMeasure('Assortativity', report.assortativity, (n) => n.toFixed(4), 'Degree-degree Pearson correlation -1..1'),
+    formatMeasure('Spectral radius', report.spectral_radius, (n) => n.toFixed(4), 'Largest adjacency eigenvalue; sqrt(n) ~ uniform, larger = hub dominance'),
   ];
   return (
     <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
@@ -245,6 +248,83 @@ function AlertCard({ alert }: { alert: RobustnessAlert | null }) {
           Also triggered: {alert.evidence.triggered_kinds.slice(1).join(', ')}
         </div>
       )}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// SpectralRadiusBar - tiny d3 bar showing hub dominance vs sqrt(node_count)
+// ---------------------------------------------------------------------------
+
+function SpectralRadiusBar({ report }: { report: RobustnessReport }) {
+  const svgRef = useRef<SVGSVGElement>(null);
+  useEffect(() => {
+    if (!svgRef.current) return;
+    const svg = d3.select(svgRef.current);
+    svg.selectAll('*').remove();
+    const W = svgRef.current.clientWidth || 280;
+    const H = svgRef.current.clientHeight || 80;
+    const margin = { top: 8, right: 8, bottom: 22, left: 8 };
+    const innerW = W - margin.left - margin.right;
+    const innerH = H - margin.top - margin.bottom;
+    const g = svg.append('g').attr('transform', 'translate(' + margin.left + ',' + margin.top + ')');
+
+    const sr = report.spectral_radius;
+    const n = report.node_count;
+    // Uniform graph baseline: spectral_radius ~ sqrt(n). Use it as the
+    // 100% mark so a hub-dominated graph overshoots the bar.
+    const baseline = Math.sqrt(Math.max(n, 2));
+    const maxV = Math.max(sr, baseline) * 1.1 || 1;
+
+    // Axis baseline
+    g.append('line')
+      .attr('x1', 0).attr('x2', innerW)
+      .attr('y1', innerH).attr('y2', innerH)
+      .attr('stroke', '#3a4055').attr('stroke-width', 1);
+
+    // Hub-dominance bar (spectral radius)
+    const barW = innerW * Math.min(sr / maxV, 1);
+    g.append('rect')
+      .attr('x', 0).attr('y', innerH - Math.min(innerH * 0.8, 30))
+      .attr('width', barW)
+      .attr('height', Math.min(innerH * 0.8, 30))
+      .attr('fill', '#6ad1ff')
+      .attr('rx', 2);
+
+    // Baseline tick (sqrt(n))
+    const tickX = innerW * Math.min(baseline / maxV, 1);
+    g.append('line')
+      .attr('x1', tickX).attr('x2', tickX)
+      .attr('y1', innerH - Math.min(innerH * 0.8, 30) - 4)
+      .attr('y2', innerH)
+      .attr('stroke', '#ffd866').attr('stroke-width', 1).attr('stroke-dasharray', '3,2');
+
+    // Axis labels
+    g.append('text')
+      .attr('x', 0).attr('y', H - 6)
+      .attr('fill', 'var(' + DD + 'tg-text-muted)')
+      .attr('font-size', 9).attr('font-family', 'JetBrains Mono, monospace')
+      .text('0');
+    g.append('text')
+      .attr('x', innerW).attr('y', H - 6)
+      .attr('text-anchor', 'end')
+      .attr('fill', 'var(' + DD + 'tg-text-muted)')
+      .attr('font-size', 9).attr('font-family', 'JetBrains Mono, monospace')
+      .text('spectral_radius = ' + sr.toFixed(3) + ' / sqrt(n) = ' + baseline.toFixed(2));
+    g.append('text')
+      .attr('x', tickX).attr('y', H - 6)
+      .attr('text-anchor', 'middle')
+      .attr('fill', '#ffd866')
+      .attr('font-size', 9).attr('font-family', 'JetBrains Mono, monospace')
+      .text('uniform baseline');
+  }, [report]);
+  return (
+    <div>
+      <svg ref={svgRef} style={{ width: '100%', height: 80, display: 'block' }} />
+      <div style={{ fontSize: 10, color: 'var(' + DD + 'tg-text-muted)', marginTop: 2, lineHeight: 1.5 }}>
+        Bar overshoots the dashed <span style={{ color: '#ffd866' }}>sqrt(n)</span> line when a single account dominates the funds-flow graph
+        (typical of mule-pool hub-and-spoke topologies).
+      </div>
     </div>
   );
 }
@@ -430,6 +510,16 @@ export function RobustnessView() {
           Surfaced alert
         </div>
         <div style={{ padding: 14 }}><AlertCard alert={alert} /></div>
+        {report && (
+          <>
+            <div style={{ padding: '12px 14px', borderTop: '1px solid ' + borderColor, fontSize: 11, color: 'var(' + DD + 'tg-text-muted)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+              Hub dominance
+            </div>
+            <div style={{ padding: '0 14px 12px' }}>
+              <SpectralRadiusBar report={report} />
+            </div>
+          </>
+        )}
         {alert && (
           <>
             <div style={{ padding: '12px 14px', borderTop: '1px solid ' + borderColor, fontSize: 11, color: 'var(' + DD + 'tg-text-muted)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>

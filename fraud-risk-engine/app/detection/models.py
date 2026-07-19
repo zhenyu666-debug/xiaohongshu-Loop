@@ -1123,6 +1123,7 @@ def robustness_alert_from_report(
             "edge_connectivity": report.edge_connectivity,
             "node_connectivity_estimate": report.node_connectivity_estimate,
             "assortativity": report.assortativity,
+            "spectral_radius": report.spectral_radius,
             "triggered_kinds": kinds,
             "thresholds": {
                 "low_connectivity_threshold": low_connectivity_threshold,
