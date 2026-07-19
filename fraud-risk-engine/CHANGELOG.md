@@ -1,5 +1,76 @@
 ﻿# CHANGELOG
 
+## 0.3.0 — 2026-07-19
+
+v0.3.0 extends the algorithm portfolio with graph-theoretic robustness
+measures (TIGER port) and a per-account MedGraph view (Synthea-style
+patient graph).
+
+### Added
+
+- `app/eval/graph_robustness.py` (TIGER library port, stdlib-only)
+  — composite robustness measures: density, average degree, clustering
+  coefficient, diameter, edge / node connectivity lower bounds, degree
+  assortativity, and a power-iteration spectral-radius estimate.
+- `app/queries/edge_features.py` (TigerLily port, stdlib-only) — six
+  edge-feature operators: Hadamard, difference, L1, L2, concatenation,
+  cosine similarity, plus `apply_operator` dispatch and registry.
+- `app/loader/medgraph_loader.py` + `app/queries/medgraph/*` — Synthea
+  patient graph: 26 VERTEX + 41 EDGE schema, 6 GSQL queries
+  (`get_patient_conditions`, `get_patient_codes`, `get_code_cost`,
+  `get_cost_outliers`, `check_distance`, `cosine_patient_demographics`),
+  synthetic patient generator with deterministic seed.
+- `app/loader/bankfraud_loader.py` — real Kaggle Banking Fraud dataset
+  loader (xlsx → API-ready graph dict with fraud/non-fraud nodes).
+- `app/queries/gdsl.py` + `app/queries/gdsl/` — TigerGraph Graph
+  Algorithm Library v4.4.0_dev port: 69 GSQL queries across Centrality,
+  Classification, Community, GraphML, Path, Patterns, Similarity, and
+  Topological Link Prediction categories.
+- `app/queries/edge_features.py` — TigerLily operator port
+  (Hadarmard / L1 / L2 / cosine / concatenation / difference).
+- `app/eval/graph_robustness.py` — TIGER `measures` subset port
+  (stdlib-only, no networkx).
+- `app/detection/models.py::robustness_alert_from_report` — factory
+  that converts a `RobustnessReport` into a `RiskAlert`, surfacing
+  `graph_robustness_low_connectivity` (edge_connectivity <= 2) and
+  `graph_robustness_dense` (density >= 0.30) as outlier signals.
+- `GET /api/robustness` — returns the full `RobustnessReport` and the
+  surfaced alert for the active dataset, so the Dashboard can render
+  the measures table.
+- `GET /api/medgraph/sample` and `GET /api/medgraph/patient/{id}` —
+  Synthea-style patient graph endpoints.
+- `GET /api/bankfraud/sample` — real Kaggle banking-fraud dataset
+  endpoint (sample_size, fraud_ratio).
+
+### Changed
+
+- `app/detection/local_detector.py::run_local_detector` — now also
+  computes `compute_robustness(ds)` and appends the surfaced
+  robustness alert to its alert list.
+- `app/detection/tg_detector.py` — wired all 69 GDSL queries through
+  TigerGraphDetector.run() with per-query try/except and a centralised
+  `detail_parts` accumulator; degraded-fallback path inherits the new
+  robustness alert via `run_local_detector`.
+- `app/detection/__init__.py` — exports `robustness_alert_from_report`.
+- `frontend/index.html` — title reflects all five tabs.
+
+### Tested
+
+```text
+pytest -q
+121 passed, 1 warning in 13.18s
+test_api                  x 12
+test_backtest             x 11
+test_detection            x 16
+test_edge_features        x 13
+test_graph_robustness     x 29
+test_medgraph             x  7
+test_memory               x  4
+test_profile_multihop     x 21
+test_schema_and_queries   x  4
+test_synth_generator      x  4
+```
+
 ## 0.2.0 — 2026-07-18
 
 v0.2.0 adds evaluation, profiling, and memory to the base v0.1.0 build.

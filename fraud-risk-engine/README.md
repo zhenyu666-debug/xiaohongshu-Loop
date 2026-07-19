@@ -4,7 +4,7 @@ TigerGraph-backed **financial fraud risk detection engine** with a
 **Multi-view + Dashboard + Investigation** visualization stack and a
 **dual-layer markdown memory**.
 
-> Status: v0.3.0 — TigerLily + TIGER + MedGraph + GDSL ports landed, 110/110 tests passing.
+> Status: v0.3.0 — TigerLily + TIGER + MedGraph + GDSL ports + TIGER robustness surface landed, 121/121 tests passing.
 
 ---
 
