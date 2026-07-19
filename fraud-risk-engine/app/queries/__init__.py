@@ -16,6 +16,7 @@ from .fraud_queries import (
     GSQL_TRANSACTION_RINGS,
     GSQL_WCC,
 )
+from . import gdsl
 
 __all__ = [
     "GSQL_BETWEENNESS",
@@ -27,4 +28,5 @@ __all__ = [
     "GSQL_SHARED_DEVICE_RINGS",
     "GSQL_TRANSACTION_RINGS",
     "GSQL_WCC",
+    "gdsl",
 ]

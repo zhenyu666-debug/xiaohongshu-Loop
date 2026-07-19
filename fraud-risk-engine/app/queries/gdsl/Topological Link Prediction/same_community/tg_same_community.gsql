@@ -1,0 +1,78 @@
+CREATE QUERY tg_same_community(VERTEX v_source, VERTEX v_target, STRING community_attribute, STRING community_attr_type, BOOL print_results = TRUE)  SYNTAX V1 { 
+
+
+    /*
+    First Author: <First Author Name>
+    First Commit Date:  <First Commit Date>
+
+    Recent Author: <Recent Commit Author Name>
+    Recent Commit Date: <Recent Commit Date>
+
+
+    Repository:
+        https://github.com/tigergraph/gsql-graph-algorithms/tree/master/algorithms/Topological%20Link%20Prediction
+
+    Maturity:
+        production
+
+    Description: 
+        This query returns 1 if the two vertices are in the same community, and 0 otherwise.
+        Assumes that a community dedection algorithm has already
+        been run and the results are stored in an integer vertex attribute.
+
+    Publications:
+        NA
+
+    TigerGraph Documentation:
+        https://docs.tigergraph.com/graph-ml/current/link-prediction/same-community
+
+    Parameters:
+        v_source:
+            Input vertex one
+        v_target:
+            Input vertex two
+        print_results:
+            if True, print result (True by default)
+    */
+
+    INT aCommunity;
+    INT bCommunity;
+    avs = {v_source};
+    bvs = {v_target};
+
+    IF community_attr_type NOT IN ("UINT","INT", "FLOAT", "DOUBLE", "STRING") THEN
+        PRINT "communityAttrType not valid option" as errMsg;
+        RETURN;
+    END;
+    
+    res = SELECT av
+          FROM avs:av 
+          POST-ACCUM CASE  community_attr_type 
+                     WHEN "UINT" THEN aCommunity = av.getAttr(community_attribute, "UINT")
+                     WHEN "INT" THEN aCommunity = av.getAttr(community_attribute, "INT")
+                     WHEN "FLOAT" THEN aCommunity = av.getAttr(community_attribute, "FLOAT")
+                     WHEN "DOUBLE" THEN aCommunity = av.getAttr(community_attribute, "DOUBLE")
+                     WHEN "STRING" THEN aCommunity = str_to_int(av.getAttr(community_attribute, "STRING"))
+                     END;
+          
+    res = SELECT bv
+          FROM bvs:bv
+          POST-ACCUM CASE  community_attr_type 
+                     WHEN "UINT" THEN bCommunity = bv.getAttr(community_attribute, "UINT")
+                     WHEN "INT" THEN bCommunity = bv.getAttr(community_attribute, "INT")
+                     WHEN "FLOAT" THEN bCommunity = bv.getAttr(community_attribute, "FLOAT")
+                     WHEN "DOUBLE" THEN bCommunity = bv.getAttr(community_attribute, "DOUBLE")
+                     WHEN "STRING" THEN bCommunity = str_to_int(bv.getAttr(community_attribute, "STRING"))
+                     END;
+          
+    # Check if in same community
+    IF aCommunity == bCommunity THEN 
+        IF print_results THEN
+            PRINT 1;
+        END;
+    ELSE # Not in same community
+        IF print_results THEN
+            PRINT 0;
+        END;
+    END;
+}

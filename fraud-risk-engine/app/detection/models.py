@@ -38,6 +38,49 @@ class AlertKind(str, Enum):
     JACCARD = "jaccard_similarity"
     BETWEENNESS = "betweenness"
     CLOSENESS = "closeness"
+    # ── GDSL categories (69 queries from gsql-graph-algorithms library) ──
+    CENTRALITY = "centrality"
+    CENTRALITY_ARTICLE_RANK = "centrality_article_rank"
+    CENTRALITY_EIGENVECTOR = "centrality_eigenvector"
+    CENTRALITY_HARMONIC = "centrality_harmonic"
+    CENTRALITY_DEGREE = "centrality_degree"
+    CENTRALITY_PAGERANK_EXTENDED = "centrality_pagerank_extended"
+    CENTRALITY_PAGERANK_PERS = "centrality_pagerank_personalized"
+    CENTRALITY_INFLUENCE = "centrality_influence_maximization"
+    CLASSIFICATION = "classification"
+    CLASSIFICATION_KNN = "classification_knn"
+    CLASSIFICATION_COLORING = "classification_coloring"
+    CLASSIFICATION_MIS = "classification_mis"
+    COMMUNITY = "community"
+    COMMUNITY_SCC = "community_scc"
+    COMMUNITY_KCORE = "community_kcore"
+    COMMUNITY_KMEANS = "community_kmeans"
+    COMMUNITY_LCC = "community_local_clustering"
+    COMMUNITY_LOUVAIN = "community_louvain"
+    COMMUNITY_MAP_EQ = "community_map_equation"
+    COMMUNITY_SLPA = "community_slpa"
+    COMMUNITY_TRI_COUNT = "community_triangle_counting"
+    GRAPHML_EMBEDDINGS = "graphml_embeddings"
+    GRAPHML_EMBEDDING_SIMILARITY = "graphml_embedding_similarity"
+    PATH = "path"
+    PATH_ASTAR = "path_astar"
+    PATH_SHORTEST_PATH = "path_shortest_path"
+    PATH_CYCLE = "path_cycle"
+    PATH_MAXFLOW = "path_maxflow"
+    PATH_MST = "path_minimum_spanning"
+    PATH_DIAMETER = "path_diameter"
+    PATTERNS = "patterns"
+    PATTERNS_FPM = "patterns_frequent_pattern"
+    SIMILARITY = "similarity"
+    SIMILARITY_JACCARD_EXT = "similarity_jaccard_extended"
+    SIMILARITY_COSINE = "similarity_cosine"
+    TLP = "topological_link_prediction"
+    TLP_ADAMIC_ADAR = "tlp_adamic_adar"
+    TLP_COMMON_NEIGHBORS = "tlp_common_neighbors"
+    TLP_PREFERENTIAL = "tlp_preferential_attachment"
+    TLP_RESOURCE_ALLOC = "tlp_resource_allocation"
+    TLP_SAME_COMMUNITY = "tlp_same_community"
+    TLP_TOTAL_NEIGHBORS = "tlp_total_neighbors"
 
 
 @dataclass
@@ -422,6 +465,557 @@ def closeness_alert_from_gsql(result: dict) -> RiskAlert | None:
             "vertex_count": vertex_count,
             "top_closeness": top_cl[:10],
         },
+    )
+
+
+def _gdsl_generic_alert(
+    result: dict,
+    kind: str,
+    severity: AlertSeverity,
+    score: float,
+    title: str,
+    description: str,
+    top_k: int = 20,
+) -> RiskAlert | None:
+    """Generic factory for GDSL queries that return a top_scores heap.
+
+    Expected GSQL output shape (Centrality / Community / Similarity / TLP):
+        {"results": [{"top_scores": [{"Vertex_ID": "...", "score": 0.5}, ...]}]}
+    or:
+        {"results": [{"sizes": {"compId": count, ...}}]}
+    """
+    # Try top_scores heap first
+    raw = _gsql_value(result, "top_scores", None)
+    if raw is None:
+        # Try sizes map (WCC / LPCC community output)
+        raw = _gsql_value(result, "sizes", None)
+    if raw is None:
+        raw = _gsql_value(result, "top_scores", None)
+    if not raw:
+        return None
+
+    involved: list[str] = []
+    if isinstance(raw, dict):
+        # sizes map: keys are vertex IDs, values are counts
+        sorted_items = sorted(raw.items(), key=lambda x: x[1], reverse=True)[:top_k]
+        involved = [str(k) for k, _ in sorted_items]
+        evidence = dict(sorted_items)
+    elif isinstance(raw, list):
+        # heap: each item has Vertex_ID (or v_id) and score
+        for item in raw[:top_k]:
+            if isinstance(item, dict):
+                vid = item.get("Vertex_ID") or item.get("v_id") or item.get("score", "unknown")
+                involved.append(str(vid))
+        evidence = {"top_scores": raw[:top_k]}
+
+    return RiskAlert(
+        kind=kind,
+        severity=severity.value,
+        score=round(min(1.0, score), 4),
+        title=title,
+        description=description,
+        involved=involved[:top_k],
+        evidence=evidence if isinstance(raw, dict) else {"items": raw[:top_k]},
+    )
+
+
+def article_rank_alert_from_gsql(result: dict) -> RiskAlert | None:
+    return _gdsl_generic_alert(
+        result,
+        AlertKind.CENTRALITY_ARTICLE_RANK.value,
+        AlertSeverity.MEDIUM,
+        0.35,
+        "Article Rank centrality",
+        "Article Rank scores for vertices — similar to PageRank but considers incoming links as citations.",
+    )
+
+
+def eigenvector_alert_from_gsql(result: dict) -> RiskAlert | None:
+    return _gdsl_generic_alert(
+        result,
+        AlertKind.CENTRALITY_EIGENVECTOR.value,
+        AlertSeverity.MEDIUM,
+        0.35,
+        "Eigenvector centrality",
+        "Eigenvector centrality — a vertex is important if its neighbors are important.",
+    )
+
+
+def harmonic_alert_from_gsql(result: dict) -> RiskAlert | None:
+    return _gdsl_generic_alert(
+        result,
+        AlertKind.CENTRALITY_HARMONIC.value,
+        AlertSeverity.MEDIUM,
+        0.35,
+        "Harmonic centrality",
+        "Harmonic centrality — sum of 1/distance to all reachable vertices.",
+    )
+
+
+def degree_cent_alert_from_gsql(result: dict) -> RiskAlert | None:
+    return _gdsl_generic_alert(
+        result,
+        AlertKind.CENTRALITY_DEGREE.value,
+        AlertSeverity.LOW,
+        0.25,
+        "Degree centrality (unweighted)",
+        "Unweighted degree centrality — raw count of incident edges per vertex.",
+    )
+
+
+def weighted_degree_cent_alert_from_gsql(result: dict) -> RiskAlert | None:
+    return _gdsl_generic_alert(
+        result,
+        AlertKind.CENTRALITY_DEGREE.value,
+        AlertSeverity.LOW,
+        0.25,
+        "Degree centrality (weighted)",
+        "Weighted degree centrality — sum of edge weights per vertex.",
+    )
+
+
+def pagerank_extended_alert_from_gsql(result: dict) -> RiskAlert | None:
+    return _gdsl_generic_alert(
+        result,
+        AlertKind.CENTRALITY_PAGERANK_EXTENDED.value,
+        AlertSeverity.MEDIUM,
+        0.40,
+        "PageRank (GDSL library — global)",
+        "PageRank global centrality — damping=0.85, iterates until convergence.",
+    )
+
+
+def pagerank_personalized_alert_from_gsql(result: dict) -> RiskAlert | None:
+    return _gdsl_generic_alert(
+        result,
+        AlertKind.CENTRALITY_PAGERANK_PERS.value,
+        AlertSeverity.MEDIUM,
+        0.40,
+        "PageRank (personalized / multi-source)",
+        "Personalized PageRank seeded from specific source vertices.",
+    )
+
+
+def influence_max_alert_from_gsql(result: dict) -> RiskAlert | None:
+    return _gdsl_generic_alert(
+        result,
+        AlertKind.CENTRALITY_INFLUENCE.value,
+        AlertSeverity.HIGH,
+        0.45,
+        "Influence Maximization (CELF / Greedy)",
+        "Influence Maximization — greedy / CELF seed selection for maximum cascade spread.",
+    )
+
+
+def knn_alert_from_gsql(result: dict) -> RiskAlert | None:
+    """KNN cosine similarity classification result."""
+    raw = _gsql_value(result, "Results", None) or _gsql_value(result, "top_scores", None)
+    if not raw:
+        return None
+    involved = []
+    if isinstance(raw, list):
+        for item in raw[:20]:
+            if isinstance(item, dict):
+                involved.append(str(item.get("src_id", item.get("v_type", "unknown"))))
+    return RiskAlert(
+        kind=AlertKind.CLASSIFICATION_KNN.value,
+        severity=AlertSeverity.MEDIUM.value,
+        score=0.40,
+        title="K-Nearest Neighbors (Cosine similarity)",
+        description="KNN cosine similarity classification — assigns labels based on nearest neighbors.",
+        involved=involved[:20],
+        evidence={"results": raw[:20] if isinstance(raw, list) else raw},
+    )
+
+
+def greedy_coloring_alert_from_gsql(result: dict) -> RiskAlert | None:
+    raw = _gsql_value(result, "colors", None)
+    if not raw:
+        raw = _gsql_value(result, "color_count", None)
+    count = raw.get("color_count", 0) if isinstance(raw, dict) else 0
+    return RiskAlert(
+        kind=AlertKind.CLASSIFICATION_COLORING.value,
+        severity=AlertSeverity.LOW.value,
+        score=round(min(1.0, 0.1 * count), 4),
+        title="Greedy Graph Coloring",
+        description=f"Greedy graph coloring — {count} color(s) used to properly color the graph.",
+        involved=[],
+        evidence={"color_count": count, "colors": raw if isinstance(raw, dict) else {}},
+    )
+
+
+def mis_alert_from_gsql(result: dict) -> RiskAlert | None:
+    raw = _gsql_value(result, "Maximal_Independent_Set", None)
+    if not raw:
+        raw = _gsql_value(result, "mis", None)
+    vertices = raw if isinstance(raw, list) else []
+    if not vertices:
+        return None
+    return RiskAlert(
+        kind=AlertKind.CLASSIFICATION_MIS.value,
+        severity=AlertSeverity.LOW.value,
+        score=0.30,
+        title="Maximal Independent Set",
+        description=f"Maximal Independent Set — {len(vertices)} vertices form an independent set.",
+        involved=[str(v) for v in vertices[:20]],
+        evidence={"mis_vertices": vertices[:20]},
+    )
+
+
+def scc_alert_from_gsql(result: dict) -> RiskAlert | None:
+    """Strongly Connected Components alert."""
+    raw = _gsql_value(result, "sizes", None) or _gsql_value(result, "top_scores", None)
+    if not raw:
+        return None
+    if isinstance(raw, dict):
+        sorted_items = sorted(raw.items(), key=lambda x: x[1], reverse=True)[:20]
+        involved = [str(k) for k, _ in sorted_items]
+        total = sum(raw.values())
+        largest = max(raw.values()) if raw else 0
+    else:
+        involved = []
+        total = largest = 0
+        sorted_items = {}
+    severity = (
+        AlertSeverity.HIGH if largest >= 10 else AlertSeverity.MEDIUM if largest >= 5 else AlertSeverity.LOW
+    )
+    return RiskAlert(
+        kind=AlertKind.COMMUNITY_SCC.value,
+        severity=severity.value,
+        score=round(min(1.0, 0.3 + 0.01 * total), 4),
+        title="Strongly Connected Components",
+        description=f"SCC: {len(raw) if isinstance(raw, dict) else 0} component(s), largest={largest}, total vertices={total}.",
+        involved=involved[:20],
+        evidence=dict(sorted_items) if isinstance(raw, dict) else {"items": raw[:20]},
+    )
+
+
+def kcore_alert_from_gsql(result: dict) -> RiskAlert | None:
+    raw = _gsql_value(result, "kcore", None) or _gsql_value(result, "core_number", None)
+    if not raw:
+        return None
+    kcore = raw.get("k", 0) if isinstance(raw, dict) else 0
+    vertices = raw.get("vertices", []) if isinstance(raw, dict) else raw
+    return RiskAlert(
+        kind=AlertKind.COMMUNITY_KCORE.value,
+        severity=AlertSeverity.HIGH.value if kcore >= 5 else AlertSeverity.MEDIUM.value,
+        score=round(min(1.0, 0.3 + 0.05 * kcore), 4),
+        title=f"K-Core decomposition (k={kcore})",
+        description=f"{kcore}-core contains {len(vertices) if isinstance(vertices, list) else '?'} vertices.",
+        involved=[str(v) for v in (vertices[:20] if isinstance(vertices, list) else [])],
+        evidence={"k": kcore, "vertices": vertices[:20] if isinstance(vertices, list) else vertices},
+    )
+
+
+def kmeans_alert_from_gsql(result: dict) -> RiskAlert | None:
+    raw = _gsql_value(result, "Clusters", None) or _gsql_value(result, "centroids", None)
+    if not raw:
+        return None
+    clusters = raw if isinstance(raw, list) else []
+    return RiskAlert(
+        kind=AlertKind.COMMUNITY_KMEANS.value,
+        severity=AlertSeverity.MEDIUM.value,
+        score=0.35,
+        title="K-Means clustering",
+        description=f"K-Means: {len(clusters)} cluster(s) identified.",
+        involved=[f"cluster_{i}" for i in range(min(len(clusters), 20))],
+        evidence={"clusters": clusters[:10]},
+    )
+
+
+def lcc_alert_from_gsql(result: dict) -> RiskAlert | None:
+    raw = _gsql_value(result, "Coefficients", None) or _gsql_value(result, "lcc", None)
+    if not raw:
+        return None
+    if isinstance(raw, dict):
+        sorted_items = sorted(raw.items(), key=lambda x: x[1], reverse=True)[:20]
+        involved = [str(k) for k, _ in sorted_items]
+        avg_coef = sum(raw.values()) / len(raw) if raw else 0
+    else:
+        sorted_items = []
+        involved = []
+        avg_coef = 0
+    return RiskAlert(
+        kind=AlertKind.COMMUNITY_LCC.value,
+        severity=AlertSeverity.MEDIUM.value,
+        score=round(min(1.0, avg_coef), 4),
+        title="Local Clustering Coefficient",
+        description=f"Avg clustering coefficient: {avg_coef:.4f}",
+        involved=involved[:20],
+        evidence=dict(sorted_items) if isinstance(raw, dict) else {"items": raw[:20]},
+    )
+
+
+def louvain_alert_from_gsql(result: dict) -> RiskAlert | None:
+    raw = _gsql_value(result, "Clusters", None) or _gsql_value(result, "modularity", None)
+    if not raw:
+        return None
+    if isinstance(raw, dict):
+        communities = raw.get("communities", list(raw.keys())[:20])
+        modularity = raw.get("modularity", 0.0)
+    else:
+        communities = raw if isinstance(raw, list) else []
+        modularity = 0.0
+    return RiskAlert(
+        kind=AlertKind.COMMUNITY_LOUVAIN.value,
+        severity=AlertSeverity.HIGH.value,
+        score=round(min(1.0, 0.5 + modularity), 4),
+        title="Louvain community detection",
+        description=f"Louvain: {len(communities)} community/ies, modularity={modularity:.4f}.",
+        involved=[str(c) for c in communities[:20]],
+        evidence={"modularity": modularity, "communities": communities[:20]},
+    )
+
+
+def map_eq_alert_from_gsql(result: dict) -> RiskAlert | None:
+    raw = _gsql_value(result, "modules", None) or _gsql_value(result, "map_equation", None)
+    if not raw:
+        return None
+    modules = raw if isinstance(raw, list) else []
+    return RiskAlert(
+        kind=AlertKind.COMMUNITY_MAP_EQ.value,
+        severity=AlertSeverity.HIGH.value,
+        score=0.45,
+        title="Map Equation community detection",
+        description=f"Map Equation: {len(modules)} module(s) identified.",
+        involved=[str(m) for m in modules[:20]] if isinstance(modules, list) else [],
+        evidence={"modules": modules[:20] if isinstance(modules, list) else modules},
+    )
+
+
+def slpa_alert_from_gsql(result: dict) -> RiskAlert | None:
+    raw = _gsql_value(result, "communities", None) or _gsql_value(result, "SLPA", None)
+    if not raw:
+        return None
+    communities = raw if isinstance(raw, list) else []
+    return RiskAlert(
+        kind=AlertKind.COMMUNITY_SLPA.value,
+        severity=AlertSeverity.MEDIUM.value,
+        score=0.40,
+        title="Speaker-Listener Label Propagation (SLPA)",
+        description=f"SLPA: {len(communities)} community/ies detected.",
+        involved=[str(c) for c in communities[:20]] if isinstance(communities, list) else [],
+        evidence={"communities": communities[:20] if isinstance(communities, list) else communities},
+    )
+
+
+def tri_count_alert_from_gsql(result: dict) -> RiskAlert | None:
+    raw = _gsql_value(result, "triangle_count", None) or _gsql_value(result, "tri_count", None)
+    count = raw if isinstance(raw, int) else (raw.get("count", 0) if isinstance(raw, dict) else 0)
+    return RiskAlert(
+        kind=AlertKind.COMMUNITY_TRI_COUNT.value,
+        severity=AlertSeverity.MEDIUM.value,
+        score=round(min(1.0, 0.2 + 0.001 * count), 4),
+        title="Triangle Counting",
+        description=f"Total triangles in graph: {count}",
+        involved=[],
+        evidence={"triangle_count": count},
+    )
+
+
+def embedding_alert_from_gsql(result: dict) -> RiskAlert | None:
+    raw = _gsql_value(result, "embeddings", None) or _gsql_value(result, "embedding", None)
+    if not raw:
+        return None
+    count = len(raw) if isinstance(raw, list) else len(raw.get("vectors", {})) if isinstance(raw, dict) else 0
+    return RiskAlert(
+        kind=AlertKind.GRAPHML_EMBEDDINGS.value,
+        severity=AlertSeverity.LOW.value,
+        score=0.25,
+        title="Graph Embeddings (FastRP / Weisfeiler-Lehman)",
+        description=f"Graph embeddings computed for {count} vertex/vertices.",
+        involved=[],
+        evidence={"vertex_count": count, "embedding_type": "FastRP/WL"},
+    )
+
+
+def path_alert_from_gsql(result: dict, kind_str: str, title: str) -> RiskAlert | None:
+    raw = _gsql_value(result, "path", None) or _gsql_value(result, "paths", None)
+    if not raw:
+        return None
+    paths = raw if isinstance(raw, list) else [raw]
+    total_length = sum(len(p) for p in paths if isinstance(p, list))
+    return RiskAlert(
+        kind=kind_str,
+        severity=AlertSeverity.MEDIUM.value,
+        score=round(min(1.0, 0.3 + 0.01 * total_length), 4),
+        title=title,
+        description=f"{len(paths)} path(s) found, total length={total_length}.",
+        involved=paths[0][:10] if paths and isinstance(paths[0], list) else [],
+        evidence={"path_count": len(paths), "total_length": total_length, "paths": paths[:5]},
+    )
+
+
+def bfs_alert_from_gsql(result: dict) -> RiskAlert | None:
+    return path_alert_from_gsql(result, AlertKind.PATH.value, "BFS traversal")
+
+
+def astar_alert_from_gsql(result: dict) -> RiskAlert | None:
+    return path_alert_from_gsql(result, AlertKind.PATH_ASTAR.value, "A* shortest path")
+
+
+def shortest_path_alert_from_gsql(result: dict) -> RiskAlert | None:
+    return path_alert_from_gsql(result, AlertKind.PATH_SHORTEST_PATH.value, "Shortest path (unweighted / weighted)")
+
+
+def cycle_alert_from_gsql(result: dict) -> RiskAlert | None:
+    raw = _gsql_value(result, "cycles", None) or _gsql_value(result, "cycle_count", None)
+    count = raw if isinstance(raw, int) else (raw.get("count", 0) if isinstance(raw, dict) else 0)
+    return RiskAlert(
+        kind=AlertKind.PATH_CYCLE.value,
+        severity=AlertSeverity.HIGH.value if count > 0 else AlertSeverity.LOW.value,
+        score=round(min(1.0, 0.4 + 0.05 * count), 4),
+        title="Cycle detection",
+        description=f"{count} cycle(s) detected in the graph.",
+        involved=[],
+        evidence={"cycle_count": count},
+    )
+
+
+def maxflow_alert_from_gsql(result: dict) -> RiskAlert | None:
+    raw = _gsql_value(result, "max_flow", None) or _gsql_value(result, "flow", None)
+    flow = raw if isinstance(raw, (int, float)) else (raw.get("value", 0) if isinstance(raw, dict) else 0)
+    return RiskAlert(
+        kind=AlertKind.PATH_MAXFLOW.value,
+        severity=AlertSeverity.MEDIUM.value,
+        score=round(min(1.0, 0.3 + 0.001 * float(flow)), 4),
+        title="Maximum flow",
+        description=f"Maximum flow value: {flow}",
+        involved=[],
+        evidence={"max_flow": flow},
+    )
+
+
+def mst_alert_from_gsql(result: dict) -> RiskAlert | None:
+    raw = _gsql_value(result, "mst", None) or _gsql_value(result, "edges", None)
+    edges = raw if isinstance(raw, list) else []
+    return RiskAlert(
+        kind=AlertKind.PATH_MST.value,
+        severity=AlertSeverity.LOW.value,
+        score=0.20,
+        title="Minimum Spanning Tree / Forest",
+        description=f"MST / MSF: {len(edges)} edge(s) in the spanning tree.",
+        involved=[],
+        evidence={"edges": edges[:20]},
+    )
+
+
+def diameter_alert_from_gsql(result: dict) -> RiskAlert | None:
+    raw = _gsql_value(result, "diameter", None) or _gsql_value(result, "estimated_diameter", None)
+    diameter = raw if isinstance(raw, (int, float)) else (raw.get("diameter", 0) if isinstance(raw, dict) else 0)
+    return RiskAlert(
+        kind=AlertKind.PATH_DIAMETER.value,
+        severity=AlertSeverity.LOW.value,
+        score=round(min(1.0, 0.1 + 0.05 * float(diameter)), 4),
+        title="Graph diameter (estimated)",
+        description=f"Estimated graph diameter: {diameter}",
+        involved=[],
+        evidence={"diameter": diameter},
+    )
+
+
+def fpm_alert_from_gsql(result: dict) -> RiskAlert | None:
+    raw = _gsql_value(result, "frequent_patterns", None) or _gsql_value(result, "patterns", None)
+    if not raw:
+        return None
+    patterns = raw if isinstance(raw, list) else []
+    return RiskAlert(
+        kind=AlertKind.PATTERNS_FPM.value,
+        severity=AlertSeverity.MEDIUM.value,
+        score=0.35,
+        title="Frequent Pattern Mining",
+        description=f"Frequent Pattern Mining: {len(patterns)} pattern(s) found.",
+        involved=patterns[:20] if isinstance(patterns, list) else [],
+        evidence={"patterns": patterns[:20]},
+    )
+
+
+def cosine_sim_alert_from_gsql(result: dict) -> RiskAlert | None:
+    return _gdsl_generic_alert(
+        result,
+        AlertKind.SIMILARITY_COSINE.value,
+        AlertSeverity.MEDIUM,
+        0.40,
+        "Cosine similarity (all-pairs / single-source)",
+        "Cosine similarity between vertex embeddings or neighbor sets.",
+    )
+
+
+def jaccard_ext_alert_from_gsql(result: dict) -> RiskAlert | None:
+    return _gdsl_generic_alert(
+        result,
+        AlertKind.SIMILARITY_JACCARD_EXT.value,
+        AlertSeverity.MEDIUM,
+        0.40,
+        "Jaccard similarity (all-pairs / single-source — GDSL library)",
+        "Jaccard similarity between vertex neighbor sets.",
+    )
+
+
+def tlp_score_alert_from_gsql(
+    result: dict, kind_str: str, title: str, description: str
+) -> RiskAlert | None:
+    return _gdsl_generic_alert(
+        result,
+        kind_str,
+        AlertSeverity.MEDIUM,
+        0.35,
+        title,
+        description,
+    )
+
+
+def adamic_adar_alert_from_gsql(result: dict) -> RiskAlert | None:
+    return tlp_score_alert_from_gsql(
+        result,
+        AlertKind.TLP_ADAMIC_ADAR.value,
+        "Adamic-Adar index (link prediction)",
+        "Adamic-Adar: sums 1/log(degree) over common neighbors — predicts missing links.",
+    )
+
+
+def common_neighbors_alert_from_gsql(result: dict) -> RiskAlert | None:
+    return tlp_score_alert_from_gsql(
+        result,
+        AlertKind.TLP_COMMON_NEIGHBORS.value,
+        "Common Neighbors (link prediction)",
+        "Common Neighbors: count of shared neighbors — simple link prediction metric.",
+    )
+
+
+def preferential_alert_from_gsql(result: dict) -> RiskAlert | None:
+    return tlp_score_alert_from_gsql(
+        result,
+        AlertKind.TLP_PREFERENTIAL.value,
+        "Preferential Attachment (link prediction)",
+        "Preferential Attachment: degree(u) × degree(v) — rich-get-richer link formation.",
+    )
+
+
+def resource_alloc_alert_from_gsql(result: dict) -> RiskAlert | None:
+    return tlp_score_alert_from_gsql(
+        result,
+        AlertKind.TLP_RESOURCE_ALLOC.value,
+        "Resource Allocation (link prediction)",
+        "Resource Allocation: sum of 1/degree over common neighbors.",
+    )
+
+
+def same_community_alert_from_gsql(result: dict) -> RiskAlert | None:
+    return tlp_score_alert_from_gsql(
+        result,
+        AlertKind.TLP_SAME_COMMUNITY.value,
+        "Same Community (link prediction)",
+        "Same Community: two vertices in the same community are more likely to link.",
+    )
+
+
+def total_neighbors_alert_from_gsql(result: dict) -> RiskAlert | None:
+    return tlp_score_alert_from_gsql(
+        result,
+        AlertKind.TLP_TOTAL_NEIGHBORS.value,
+        "Total Neighbors (link prediction)",
+        "Total Neighbors: |N(u) ∪ N(v)| — union of neighbor sets.",
     )
 
 

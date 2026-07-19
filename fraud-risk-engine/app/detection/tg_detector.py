@@ -17,20 +17,57 @@ from typing import Any
 import httpx
 
 from ..config import Settings, get_settings
+from ..queries import gdsl as _gdsl
 from .local_detector import snapshot_from_dataset
 from .models import (
     DetectionRun,
     GraphSnapshot,
     RiskAlert,
+    adamic_adar_alert_from_gsql,
+    article_rank_alert_from_gsql,
+    astar_alert_from_gsql,
     betweenness_alert_from_gsql,
+    bfs_alert_from_gsql,
     burst_alert_from_gsql,
     closeness_alert_from_gsql,
+    common_neighbors_alert_from_gsql,
+    cosine_sim_alert_from_gsql,
+    cycle_alert_from_gsql,
+    degree_cent_alert_from_gsql,
+    diameter_alert_from_gsql,
+    embedding_alert_from_gsql,
+    eigenvector_alert_from_gsql,
+    fpm_alert_from_gsql,
+    greedy_coloring_alert_from_gsql,
+    harmonic_alert_from_gsql,
+    influence_max_alert_from_gsql,
     jaccard_alert_from_gsql,
+    kcore_alert_from_gsql,
+    kmeans_alert_from_gsql,
+    knn_alert_from_gsql,
+    lcc_alert_from_gsql,
+    louvain_alert_from_gsql,
     lpcc_alert_from_gsql,
+    map_eq_alert_from_gsql,
+    maxflow_alert_from_gsql,
+    mis_alert_from_gsql,
+    mst_alert_from_gsql,
     pagerank_alert_from_gsql,
+    pagerank_extended_alert_from_gsql,
+    pagerank_personalized_alert_from_gsql,
+    path_alert_from_gsql,
+    preferential_alert_from_gsql,
+    resource_alloc_alert_from_gsql,
     ring_alert_from_gsql,
+    same_community_alert_from_gsql,
+    scc_alert_from_gsql,
     shared_device_alert_from_gsql,
+    shortest_path_alert_from_gsql,
+    slpa_alert_from_gsql,
+    total_neighbors_alert_from_gsql,
+    tri_count_alert_from_gsql,
     wcc_alert_from_gsql,
+    weighted_degree_cent_alert_from_gsql,
 )
 
 
@@ -235,6 +272,298 @@ class TigerGraphDetector:
                         alerts.append(a)
                 except httpx.HTTPError as exc:
                     detail_parts.append(f"tg_closeness={exc}")
+
+                # ── GDSL library queries (69 total) ─────────────────────────────────
+                # Centrality
+                def _gdsl(
+                    client,
+                    name: str,
+                    params: dict[str, Any] | None = None,
+                ) -> dict:
+                    return _post_query(client, self.settings, name, params)
+
+                # 10) Article Rank
+                try:
+                    res = _gdsl(client, "tg_article_rank", {"v_type_set": ["Account"], "e_type_set": ["SHARES_DEVICE"], "reverse_e_type": ["SHARES_DEVICE"], "top_k": top_k})
+                    a = article_rank_alert_from_gsql(res)
+                    if a: alerts.append(a)
+                except httpx.HTTPError as exc:
+                    detail_parts.append(f"tg_article_rank={exc}")
+
+                # 11) Eigenvector Cent
+                try:
+                    res = _gdsl(client, "tg_eigenvector_cent", {"v_type_set": ["Account"], "e_type_set": ["SHARES_DEVICE"], "reverse_e_type": ["SHARES_DEVICE"], "top_k": top_k})
+                    a = eigenvector_alert_from_gsql(res)
+                    if a: alerts.append(a)
+                except httpx.HTTPError as exc:
+                    detail_parts.append(f"tg_eigenvector_cent={exc}")
+
+                # 12) Harmonic Cent
+                try:
+                    res = _gdsl(client, "tg_harmonic_cent", {"v_type_set": ["Account"], "e_type_set": ["SHARES_DEVICE"], "reverse_e_type": ["SHARES_DEVICE"], "top_k": top_k})
+                    a = harmonic_alert_from_gsql(res)
+                    if a: alerts.append(a)
+                except httpx.HTTPError as exc:
+                    detail_parts.append(f"tg_harmonic_cent={exc}")
+
+                # 13) Degree Cent (unweighted)
+                try:
+                    res = _gdsl(client, "tg_degree_cent", {"v_type_set": ["Account"], "e_type_set": ["SHARES_DEVICE"], "reverse_e_type": ["SHARES_DEVICE"], "top_k": top_k})
+                    a = degree_cent_alert_from_gsql(res)
+                    if a: alerts.append(a)
+                except httpx.HTTPError as exc:
+                    detail_parts.append(f"tg_degree_cent={exc}")
+
+                # 14) Weighted Degree Cent
+                try:
+                    res = _gdsl(client, "tg_weighted_degree_cent", {"v_type_set": ["Account"], "e_type_set": ["SHARES_DEVICE"], "reverse_e_type": ["SHARES_DEVICE"], "top_k": top_k})
+                    a = weighted_degree_cent_alert_from_gsql(res)
+                    if a: alerts.append(a)
+                except httpx.HTTPError as exc:
+                    detail_parts.append(f"tg_weighted_degree_cent={exc}")
+
+                # 15) PageRank (global unweighted)
+                try:
+                    res = _gdsl(client, "tg_pagerank", {"v_type_set": ["Account"], "e_type_set": ["SHARES_DEVICE"], "reverse_e_type": ["SHARES_DEVICE"], "top_k": top_k})
+                    a = pagerank_extended_alert_from_gsql(res)
+                    if a: alerts.append(a)
+                except httpx.HTTPError as exc:
+                    detail_parts.append(f"tg_pagerank={exc}")
+
+                # 16) PageRank (global weighted)
+                try:
+                    res = _gdsl(client, "tg_pagerank_wt", {"v_type_set": ["Account"], "e_type_set": ["SHARES_DEVICE"], "reverse_e_type": ["SHARES_DEVICE"], "top_k": top_k})
+                    a = pagerank_extended_alert_from_gsql(res)
+                    if a: alerts.append(a)
+                except httpx.HTTPError as exc:
+                    detail_parts.append(f"tg_pagerank_wt={exc}")
+
+                # 17) PageRank (personalized)
+                try:
+                    res = _gdsl(client, "tg_pagerank_pers", {"v_type_set": ["Account"], "e_type_set": ["SHARES_DEVICE"], "reverse_e_type": ["SHARES_DEVICE"], "top_k": top_k})
+                    a = pagerank_personalized_alert_from_gsql(res)
+                    if a: alerts.append(a)
+                except httpx.HTTPError as exc:
+                    detail_parts.append(f"tg_pagerank_pers={exc}")
+
+                # 18) Influence Maximization (CELF)
+                try:
+                    res = _gdsl(client, "tg_influence_maximization_CELF", {"v_type_set": ["Account"], "e_type_set": ["SHARES_DEVICE"], "k": 10})
+                    a = influence_max_alert_from_gsql(res)
+                    if a: alerts.append(a)
+                except httpx.HTTPError as exc:
+                    detail_parts.append(f"tg_influence_maximization_CELF={exc}")
+
+                # Community: SCC
+                try:
+                    res = _gdsl(client, "tg_scc", {"v_type_set": ["Account"], "e_type_set": ["FROM_ACCOUNT"], "print_limit": top_k})
+                    a = scc_alert_from_gsql(res)
+                    if a: alerts.append(a)
+                except httpx.HTTPError as exc:
+                    detail_parts.append(f"tg_scc={exc}")
+
+                # Community: k-core
+                try:
+                    res = _gdsl(client, "tg_kcore", {"v_type_set": ["Account"], "e_type_set": ["SHARES_DEVICE"], "k": 3, "print_limit": top_k})
+                    a = kcore_alert_from_gsql(res)
+                    if a: alerts.append(a)
+                except httpx.HTTPError as exc:
+                    detail_parts.append(f"tg_kcore={exc}")
+
+                # Community: Louvain
+                try:
+                    res = _gdsl(client, "tg_louvain", {"v_type_set": ["Account"], "e_type_set": ["SHARES_DEVICE"], "print_limit": top_k})
+                    a = louvain_alert_from_gsql(res)
+                    if a: alerts.append(a)
+                except httpx.HTTPError as exc:
+                    detail_parts.append(f"tg_louvain={exc}")
+
+                # Community: Local Clustering Coefficient
+                try:
+                    res = _gdsl(client, "tg_lcc", {"v_type_set": ["Account"], "e_type_set": ["SHARES_DEVICE"], "print_limit": top_k})
+                    a = lcc_alert_from_gsql(res)
+                    if a: alerts.append(a)
+                except httpx.HTTPError as exc:
+                    detail_parts.append(f"tg_lcc={exc}")
+
+                # Community: Map Equation
+                try:
+                    res = _gdsl(client, "tg_map_equation", {"v_type_set": ["Account"], "e_type_set": ["SHARES_DEVICE"], "print_limit": top_k})
+                    a = map_eq_alert_from_gsql(res)
+                    if a: alerts.append(a)
+                except httpx.HTTPError as exc:
+                    detail_parts.append(f"tg_map_equation={exc}")
+
+                # Community: SLPA
+                try:
+                    res = _gdsl(client, "tg_slpa", {"v_type_set": ["Account"], "e_type_set": ["SHARES_DEVICE"], "maximum_iteration": 20, "print_limit": top_k})
+                    a = slpa_alert_from_gsql(res)
+                    if a: alerts.append(a)
+                except httpx.HTTPError as exc:
+                    detail_parts.append(f"tg_slpa={exc}")
+
+                # Community: Triangle Counting (fast)
+                try:
+                    res = _gdsl(client, "tg_tri_count_fast", {"v_type_set": ["Account"], "e_type_set": ["FROM_ACCOUNT"]})
+                    a = tri_count_alert_from_gsql(res)
+                    if a: alerts.append(a)
+                except httpx.HTTPError as exc:
+                    detail_parts.append(f"tg_tri_count_fast={exc}")
+
+                # Classification: KNN (single source)
+                try:
+                    res = _gdsl(client, "tg_knn_cosine_ss", {"v_type_set": ["Account"], "e_type_set": ["SHARES_DEVICE"], "k": 5, "max_top_k": top_k})
+                    a = knn_alert_from_gsql(res)
+                    if a: alerts.append(a)
+                except httpx.HTTPError as exc:
+                    detail_parts.append(f"tg_knn_cosine_ss={exc}")
+
+                # Classification: Greedy Graph Coloring
+                try:
+                    res = _gdsl(client, "tg_greedy_graph_coloring", {"v_type_set": ["Account"], "e_type_set": ["SHARES_DEVICE"]})
+                    a = greedy_coloring_alert_from_gsql(res)
+                    if a: alerts.append(a)
+                except httpx.HTTPError as exc:
+                    detail_parts.append(f"tg_greedy_graph_coloring={exc}")
+
+                # Classification: Maximal Independent Set
+                try:
+                    res = _gdsl(client, "tg_maximal_indep_set", {"v_type_set": ["Account"], "e_type_set": ["SHARES_DEVICE"]})
+                    a = mis_alert_from_gsql(res)
+                    if a: alerts.append(a)
+                except httpx.HTTPError as exc:
+                    detail_parts.append(f"tg_maximal_indep_set={exc}")
+
+                # Path: BFS
+                try:
+                    res = _gdsl(client, "tg_bfs", {"v_start": "Account", "e_type_set": ["SHARES_DEVICE"], "max_hops": 5, "target": ""})
+                    a = bfs_alert_from_gsql(res)
+                    if a: alerts.append(a)
+                except httpx.HTTPError as exc:
+                    detail_parts.append(f"tg_bfs={exc}")
+
+                # Path: Shortest path (no weight)
+                try:
+                    res = _gdsl(client, "tg_shortest_ss_no_wt", {"v_start": "", "v_target": "", "e_type": "SHARES_DEVICE", "max_hops": 10})
+                    a = shortest_path_alert_from_gsql(res)
+                    if a: alerts.append(a)
+                except httpx.HTTPError as exc:
+                    detail_parts.append(f"tg_shortest_ss_no_wt={exc}")
+
+                # Path: Shortest path (weighted positive)
+                try:
+                    res = _gdsl(client, "tg_shortest_ss_pos_wt", {"v_start": "", "v_target": "", "e_type": "SHARES_DEVICE", "weight_attr": "amount", "max_hops": 10})
+                    a = shortest_path_alert_from_gsql(res)
+                    if a: alerts.append(a)
+                except httpx.HTTPError as exc:
+                    detail_parts.append(f"tg_shortest_ss_pos_wt={exc}")
+
+                # Path: Cycle Detection (count)
+                try:
+                    res = _gdsl(client, "tg_cycle_detection_count", {"v_type_set": ["Account"], "e_type_set": ["FROM_ACCOUNT"]})
+                    a = cycle_alert_from_gsql(res)
+                    if a: alerts.append(a)
+                except httpx.HTTPError as exc:
+                    detail_parts.append(f"tg_cycle_detection_count={exc}")
+
+                # Path: Max Flow
+                try:
+                    res = _gdsl(client, "tg_maxflow", {"v_source": "", "v_target": "", "e_type_set": ["FROM_ACCOUNT"], "reverse_e_type_set": ["TO_ACCOUNT"]})
+                    a = maxflow_alert_from_gsql(res)
+                    if a: alerts.append(a)
+                except httpx.HTTPError as exc:
+                    detail_parts.append(f"tg_maxflow={exc}")
+
+                # Path: MST
+                try:
+                    res = _gdsl(client, "tg_msf", {"v_type_set": ["Account"], "e_type_set": ["SHARES_DEVICE"], "reverse_e_type_set": ["SHARES_DEVICE"]})
+                    a = mst_alert_from_gsql(res)
+                    if a: alerts.append(a)
+                except httpx.HTTPError as exc:
+                    detail_parts.append(f"tg_msf={exc}")
+
+                # Path: Estimated Diameter
+                try:
+                    res = _gdsl(client, "tg_estimate_diameter", {"v_type_set": ["Account"], "e_type_set": ["SHARES_DEVICE"], "reverse_e_type_set": ["SHARES_DEVICE"]})
+                    a = diameter_alert_from_gsql(res)
+                    if a: alerts.append(a)
+                except httpx.HTTPError as exc:
+                    detail_parts.append(f"tg_estimate_diameter={exc}")
+
+                # Similarity: Jaccard (all-pairs)
+                try:
+                    res = _gdsl(client, "tg_jaccard_nbor_ap_batch", {"e_type": "SHARES_DEVICE", "top_k": top_k})
+                    a = jaccard_ext_alert_from_gsql(res)
+                    if a: alerts.append(a)
+                except httpx.HTTPError as exc:
+                    detail_parts.append(f"tg_jaccard_nbor_ap_batch={exc}")
+
+                # Similarity: Cosine (single-source)
+                try:
+                    res = _gdsl(client, "tg_cosine_nbor_ss", {"src": "", "e_type": "SHARES_DEVICE", "top_k": top_k})
+                    a = cosine_sim_alert_from_gsql(res)
+                    if a: alerts.append(a)
+                except httpx.HTTPError as exc:
+                    detail_parts.append(f"tg_cosine_nbor_ss={exc}")
+
+                # Topological Link Prediction: all 6
+                try:
+                    res = _gdsl(client, "tg_adamic_adar", {"v_type_set": ["Account"], "e_type_set": ["SHARES_DEVICE"], "reverse_e_type_set": ["SHARES_DEVICE"], "top_k": top_k})
+                    a = adamic_adar_alert_from_gsql(res)
+                    if a: alerts.append(a)
+                except httpx.HTTPError as exc:
+                    detail_parts.append(f"tg_adamic_adar={exc}")
+
+                try:
+                    res = _gdsl(client, "tg_common_neighbors", {"v_type_set": ["Account"], "e_type_set": ["SHARES_DEVICE"], "reverse_e_type_set": ["SHARES_DEVICE"], "top_k": top_k})
+                    a = common_neighbors_alert_from_gsql(res)
+                    if a: alerts.append(a)
+                except httpx.HTTPError as exc:
+                    detail_parts.append(f"tg_common_neighbors={exc}")
+
+                try:
+                    res = _gdsl(client, "tg_preferential_attachment", {"v_type_set": ["Account"], "e_type_set": ["SHARES_DEVICE"], "reverse_e_type_set": ["SHARES_DEVICE"], "top_k": top_k})
+                    a = preferential_alert_from_gsql(res)
+                    if a: alerts.append(a)
+                except httpx.HTTPError as exc:
+                    detail_parts.append(f"tg_preferential_attachment={exc}")
+
+                try:
+                    res = _gdsl(client, "tg_resource_allocation", {"v_type_set": ["Account"], "e_type_set": ["SHARES_DEVICE"], "reverse_e_type_set": ["SHARES_DEVICE"], "top_k": top_k})
+                    a = resource_alloc_alert_from_gsql(res)
+                    if a: alerts.append(a)
+                except httpx.HTTPError as exc:
+                    detail_parts.append(f"tg_resource_allocation={exc}")
+
+                try:
+                    res = _gdsl(client, "tg_same_community", {"v_type_set": ["Account"], "e_type_set": ["SHARES_DEVICE"], "reverse_e_type_set": ["SHARES_DEVICE"], "top_k": top_k})
+                    a = same_community_alert_from_gsql(res)
+                    if a: alerts.append(a)
+                except httpx.HTTPError as exc:
+                    detail_parts.append(f"tg_same_community={exc}")
+
+                try:
+                    res = _gdsl(client, "tg_total_neighbors", {"v_type_set": ["Account"], "e_type_set": ["SHARES_DEVICE"], "reverse_e_type_set": ["SHARES_DEVICE"], "top_k": top_k})
+                    a = total_neighbors_alert_from_gsql(res)
+                    if a: alerts.append(a)
+                except httpx.HTTPError as exc:
+                    detail_parts.append(f"tg_total_neighbors={exc}")
+
+                # Patterns: Frequent Pattern Mining
+                try:
+                    res = _gdsl(client, "tg_fpm", {"v_type_set": ["Account"], "e_type_set": ["FROM_ACCOUNT"], "min_support": 0.01, "min_pattern_size": 2, "max_pattern_size": 5})
+                    a = fpm_alert_from_gsql(res)
+                    if a: alerts.append(a)
+                except httpx.HTTPError as exc:
+                    detail_parts.append(f"tg_fpm={exc}")
+
+                # GraphML: FastRP embeddings
+                try:
+                    res = _gdsl(client, "tg_fastRP", {"v_type_set": ["Account"], "e_type_set": ["SHARES_DEVICE"], "embedding_size": 64, "num_iterations": 3})
+                    a = embedding_alert_from_gsql(res)
+                    if a: alerts.append(a)
+                except httpx.HTTPError as exc:
+                    detail_parts.append(f"tg_fastRP={exc}")
 
         except Exception as exc:
             status = "degraded" if alerts else "unreachable"
