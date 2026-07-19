@@ -4,7 +4,7 @@ TigerGraph-backed **financial fraud risk detection engine** with a
 **Multi-view + Dashboard + Investigation** visualization stack and a
 **dual-layer markdown memory**.
 
-> Status: v0.3.0 — TigerLily + TIGER + MedGraph + GDSL ports + TIGER robustness surface landed, 121/121 tests passing.
+> Status: v0.3.1 — TIGER robustness surface (AlertKind + `/api/robustness`) wired through the React frontend (**Graph Robustness** tab). 121/121 tests passing.
 
 ---
 
@@ -116,7 +116,12 @@ the API still serves everything using the in-memory fallback.
 | `/api/detector/latest` (GET)              | GET    | Return the latest detection run |
 | `/api/memory/static` (GET)                | GET    | Static markdown memory |
 | `/api/memory/dynamic` (GET)               | GET    | Dynamic memory (regenerated each run) |
+| `/api/robustness` (GET)                   | GET    | TIGER-port `RobustnessReport` (density, avg degree, clustering, diameter, connectivity, assortativity) + surfaced alert |
+| `/api/bankfraud/sample` (GET)             | GET    | Kaggle banking-fraud feature matrix (subset) as fraud-aware graph |
+| `/api/medgraph/sample` (GET)              | GET    | Synthea MedGraph (synthetic patient health graph) |
+| `/api/medgraph/patient/{id}` (GET)        | GET    | Patient detail (encounters + conditions + medications) |
 | `/ui/`                                    | GET    | Vanilla HTML/SVG multi-view UI |
+| `frontend/` (Vite)                        | dev    | React Graph Studio UI (5 schema/data tabs + PaySim/MedGraph/Robustness visualisations) |
 
 ---
 

@@ -7,8 +7,9 @@ import { WriteQueries } from './pages/WriteQueries';
 import { ExploreGraph } from './pages/ExploreGraph';
 import { PaySimView } from './pages/PaySimView';
 import { MedGraphView } from './pages/MedGraphView';
+import { RobustnessView } from './pages/RobustnessView';
 
-type Page = 'design' | 'map' | 'load' | 'queries' | 'explore' | 'paysim' | 'medgraph';
+type Page = 'design' | 'map' | 'load' | 'queries' | 'explore' | 'paysim' | 'medgraph' | 'robustness';
 
 const NAV_ITEMS: { id: Page; label: string; icon: string }[] = [
   { id: 'design', label: 'Design Schema', icon: '⬡' },
@@ -18,6 +19,7 @@ const NAV_ITEMS: { id: Page; label: string; icon: string }[] = [
   { id: 'explore', label: 'Explore Graph', icon: '◎' },
   { id: 'paysim', label: 'PaySim Fraud', icon: '⚠' },
   { id: 'medgraph', label: 'MedGraph', icon: '✚' },
+  { id: 'robustness', label: 'Graph Robustness', icon: '◊' },
 ];
 
 function App() {
@@ -25,13 +27,14 @@ function App() {
 
   const renderPage = () => {
     switch (activePage) {
-      case 'design':   return <DesignSchema />;
-      case 'map':      return <MapData />;
-      case 'load':     return <LoadData />;
-      case 'queries':  return <WriteQueries />;
-      case 'explore':  return <ExploreGraph />;
-      case 'paysim':   return <PaySimView />;
-      case 'medgraph': return <MedGraphView />;
+      case 'design':      return <DesignSchema />;
+      case 'map':         return <MapData />;
+      case 'load':        return <LoadData />;
+      case 'queries':     return <WriteQueries />;
+      case 'explore':     return <ExploreGraph />;
+      case 'paysim':      return <PaySimView />;
+      case 'medgraph':    return <MedGraphView />;
+      case 'robustness':  return <RobustnessView />;
     }
   };
 
