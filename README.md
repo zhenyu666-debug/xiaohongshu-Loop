@@ -1,4 +1,4 @@
-﻿<!-- ============================================================ -->
+<!-- ============================================================ -->
 <!-- xiaohongshu-Loop · 仓库首页                                  -->
 <!-- 替换为真实品牌 LOGO 后，请同步更新顶部 hero 图和 favicon      -->
 <!-- ============================================================ -->
@@ -46,6 +46,11 @@
 
 > [!IMPORTANT]
 > **首发渠道：小红书** · 架构预留抖音 / 快手 / 视频号 / B 站 / 知乎扩展位 · **中台骨架优先**，业务侧只关心"什么账号发什么内容什么时间发"。
+
+## Status
+
+- **xiaohongshu-saas / 中台**：M1 - M7 全交付（176 backend tests passing，1 real-OpenAI test 在缺 API key 时跳过）。
+- **fraud-risk-engine / 子项目 风控引擎**：v0.3.0 — `110/110 tests passing`（TigerLily 边特征算子、TIGER 图鲁棒性度量、MedGraph Synthea 集成、TigerGraph GDSL v4.4.0_dev 全部 69 条 GSQL 查询导入）。详见 [`fraud-risk-engine/CHANGELOG.md`](fraud-risk-engine/CHANGELOG.md)。
 
 ## 核心能力矩阵
 

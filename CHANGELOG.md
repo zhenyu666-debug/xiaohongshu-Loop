@@ -15,6 +15,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `CHANGELOG.md` is now stored as UTF-8 (was UTF-16 LE with BOM up through `d629806`), so `git diff` shows proper text patches instead of "Binary files differ".
   `CHANGELOG.md` 现在以 UTF-8 存储（`d629806` 之前为 UTF-16 LE 带 BOM），`git diff` 将显示文本补丁而非「Binary files differ」。
 
+## [0.3.0] - 2026-07-19
+
+### Notes
+- `feat(queries): port TigerLily edge-feature operators (hadamard/diff/l1/l2/concat/cosine)`
+  `feat(queries)`: 移植 TigerLily 边特征算子（hadamard / diff / l1 / l2 / concat / cosine）
+- `feat(eval): port TIGER graph-robustness measures (stdlib-only subset — density, clustering, diameter, connectivity, assortativity, spectral radius)`
+  `feat(eval)`: 移植 TIGER 图鲁棒性度量（仅 stdlib 子集——密度、聚类、直径、连通度、同配性、谱半径估计）
+- `feat(queries): integrate MedGraph Synthea schema + 6 GSQL queries + loader + /api/medgraph/* endpoints + MedGraphView`
+  `feat(queries)`: 集成 MedGraph Synthea（schema + 6 条 GSQL 查询 + loader + `/api/medgraph/*` 端点 + MedGraphView）
+- `feat(gdsl): import all 69 GSQL queries from TigerGraph GDSL v4.4.0_dev across Centrality / Classification / Community / GraphML / Path / Patterns / Similarity / TLP`
+  `feat(gdsl)`: 导入 TigerGraph GDSL v4.4.0_dev 全部 69 条 GSQL 查询，覆盖 Centrality / Classification / Community / GraphML / Path / Patterns / Similarity / TLP
+
+### Tested
+- `110/110 tests passing` — `110/110` 测试通过（fraud-risk-engine 子项目，v0.2.0 → v0.3.0 新增 28 个用例：TigerLily +13 / TIGER +16 / MedGraph +7 / loader 调整）；root xhs-saas 套件仍保持之前的 176 passed。
+
+> Bump lives in the fraud-risk-engine sub-project CHANGELOG and references the full port commit list (`9f01f27` GDSL · `b5b9d12` MedGraph · `cb29b61` TigerLily · `78f5851` TIGER). See [`fraud-risk-engine/CHANGELOG.md`](fraud-risk-engine/CHANGELOG.md) § v0.3.0.
+> 此次版本号变更位于 fraud-risk-engine 子项目 CHANGELOG，附完整移植提交列表（`9f01f27` GDSL · `b5b9d12` MedGraph · `cb29b61` TigerLily · `78f5851` TIGER）。详见 [`fraud-risk-engine/CHANGELOG.md`](fraud-risk-engine/CHANGELOG.md) § v0.3.0。
+
 ### Notes
 - Added `xhs-saas-console.exe` (onefile, 195 MB) as a sibling asset to the v0.6.1 release, alongside the 159 MB MSI; users who prefer direct-run have a smaller bootstrap.
   v0.6.1 release 新增 `xhs-saas-console.exe`（onefile，195 MB）作为补充下载，与 159 MB MSI 并列，供偏好直接运行的用户使用更小的引导文件。
@@ -145,7 +163,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - xiaohongshu-saas/ directory structure
 - FastAPI template-only console
 
-[Unreleased]: https://github.com/zhenyu666-debug/xiaohongshu-Loop/compare/v0.6.4...HEAD
+[Unreleased]: https://github.com/zhenyu666-debug/xiaohongshu-Loop/compare/v0.3.0...HEAD
+[0.3.0]: https://github.com/zhenyu666-debug/xiaohongshu-Loop/compare/v0.6.4...v0.3.0
 [0.6.4]: https://github.com/zhenyu666-debug/xiaohongshu-Loop/compare/v0.6.3...v0.6.4
 [0.6.3]: https://github.com/zhenyu666-debug/xiaohongshu-Loop/compare/v0.6.2...v0.6.3
 [0.6.2]: https://github.com/zhenyu666-debug/xiaohongshu-Loop/compare/v0.6.1...v0.6.2
