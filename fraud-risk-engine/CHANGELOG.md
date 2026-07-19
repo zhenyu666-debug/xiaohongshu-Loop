@@ -1,4 +1,4 @@
-# CHANGELOG
+﻿# CHANGELOG
 
 ## 0.2.0 — 2026-07-18
 
@@ -103,3 +103,25 @@ Initial end-to-end build.
 pytest -q
 23 passed
 ```
+
+## v0.3.0 - 2026-07-19 - GDSL + MedGraph + TigerLily + TIGER + BankFraud/PaySim
+
+### Added
+- GDSL import: 69 GSQL queries (Centrality, Classification, Community, GraphML, Path, Patterns, Similarity, TLP) imported from TigerGraph Graph Algorithm Library v4.4.0_dev (commit 9f01f27)
+- MedGraph integration: Synthea 26V/41E patient-health graph, 6 GSQL queries, synthetic loader, /api/medgraph/{sample,patient/{id}}, MedGraphView.tsx (commit b5b9d12)
+- TigerLily edge-feature operators: stdlib-only port of tigerlily.operator (hadamard/difference/l1/l2/concat/cosine) (commit cb29b61)
+- TIGER graph-robustness measures: stdlib-only port of graph_tiger.measures (density, average_degree, clustering_coefficient, diameter_small, edge_connectivity, node_connectivity, degree_assortativity, spectral_radius_estimate) (commit 78f5851)
+- BankFraud (Kaggle 138MB xlsx + 500-row JSON cache) loader
+- PaySim synthetic generator + CSV converter
+- React Graph Studio frontend (Vite + TypeScript): LoadData / ExploreGraph / WriteQueries / MapData / DesignSchema / PaySimView pages
+
+### Changed
+- app/loader/medgraph_loader.py: deterministic ID counter (replaces uuid.uuid4)
+- app/api.py: /api/medgraph/sample n_patients constraint relaxed (ge=1, le=500)
+- app/api.py: /api/paysim/sample fraud_rate explicit Query(float) annotation
+
+### Tests
+- 110/110 green (up from 82 at v0.2.0)
+- +13 TigerLily tests
+- +16 TIGER robustness tests
+- +7 MedGraph tests
