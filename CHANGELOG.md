@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Notes
+- **fraud-risk-engine v0.3.0 / 子项目 fraud-risk-engine v0.3.0** — TigerLily edge-feature operators (hadamard/diff/l1/l2/concat/cosine), TIGER graph-robustness measures (stdlib-only subset — density, clustering, diameter, connectivity, assortativity, spectral radius), MedGraph Synthea integration (schema + 6 GSQL queries + loader + `/api/medgraph/*` endpoints + MedGraphView), and full GDSL v4.4.0_dev import (69 GSQL queries across Centrality / Classification / Community / GraphML / Path / Patterns / Similarity / TLP). Pytest 110/110 green. See [`fraud-risk-engine/CHANGELOG.md`](fraud-risk-engine/CHANGELOG.md) for full details.
+  子项目 fraud-risk-engine v0.3.0：TigerLily 边特征算子（hadamard/diff/l1/l2/concat/cosine）、TIGER 图鲁棒性度量（仅 stdlib 子集——密度、聚类、直径、连通度、同配性、谱半径估计）、MedGraph Synthea 集成（schema + 6 条 GSQL 查询 + loader + `/api/medgraph/*` 端点 + MedGraphView）、完整 GDSL v4.4.0_dev 导入（69 条 GSQL 查询，覆盖 Centrality / Classification / Community / GraphML / Path / Patterns / Similarity / TLP）。pytest 110/110 通过。详见 [`fraud-risk-engine/CHANGELOG.md`](fraud-risk-engine/CHANGELOG.md)。
+
 ### Fixed
 - `CHANGELOG.md` is now stored as UTF-8 (was UTF-16 LE with BOM up through `d629806`), so `git diff` shows proper text patches instead of "Binary files differ".
   `CHANGELOG.md` 现在以 UTF-8 存储（`d629806` 之前为 UTF-16 LE 带 BOM），`git diff` 将显示文本补丁而非「Binary files differ」。

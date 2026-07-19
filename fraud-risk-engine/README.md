@@ -4,7 +4,7 @@ TigerGraph-backed **financial fraud risk detection engine** with a
 **Multi-view + Dashboard + Investigation** visualization stack and a
 **dual-layer markdown memory**.
 
-> Status: v0.3.0 — GDSL algorithms added, 74 unit tests green.
+> Status: v0.3.0 — TigerLily + TIGER + MedGraph + GDSL ports landed, 110/110 tests passing.
 
 ---
 
@@ -124,7 +124,7 @@ the API still serves everything using the in-memory fallback.
 
 ```bash
 pytest -q
-# 59 passed
+# 110 passed
 ```
 
 The test suite covers:
