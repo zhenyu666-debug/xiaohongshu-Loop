@@ -57,6 +57,10 @@ from .detection.local_detector import (
 )
 from .detection.models import DetectionRun
 from .detection.tg_detector import TigerGraphDetector, run_remote_detector
+from .eval.graph_robustness import (
+    RobustnessReport,
+    compute_robustness,
+)
 
 
 # ---------------------------------------------------------------------------
@@ -273,6 +277,43 @@ def register_routes(app: FastAPI, settings: Settings) -> None:
         run: DetectionRun | None = STATE.get("latest_run")
         latest = run.to_dict() if run else None
         return build_dynamic_memory(latest, STATE.get("latest_dataset"))
+
+    # ------------------------------------------------------------------
+    # Graph robustness — stdlib port of TIGER measures
+    # ------------------------------------------------------------------
+
+    @app.get("/api/robustness")
+    def robustness() -> dict[str, Any]:
+        """Run :func:`compute_robustness` on the active dataset and return
+        the report together with the alert it surfaces.
+
+        - 200 with ``report`` and ``alert`` if a dataset is loaded.
+        - 400 with ``detail`` if no dataset has been built yet (call
+          ``POST /api/dataset`` first).
+        - 400 with ``detail`` for empty / trivial datasets (node_count < 2).
+        """
+        ds: GeneratedDataset | None = STATE.get("latest_dataset")
+        if not ds:
+            raise HTTPException(
+                status_code=400,
+                detail="no dataset — POST /api/dataset first",
+            )
+
+        from .detection.models import robustness_alert_from_report
+
+        report: RobustnessReport = compute_robustness(ds)
+        if report.node_count < 2:
+            raise HTTPException(
+                status_code=400,
+                detail="dataset too small for robustness measures (node_count < 2)",
+            )
+
+        alert = robustness_alert_from_report(report)
+        return {
+            "ok": True,
+            "report": report.to_dict(),
+            "alert": alert.to_dict() if alert is not None else None,
+        }
 
     # ------------------------------------------------------------------
     # Profile — multi-hop BFS

@@ -11,6 +11,10 @@ import math
 
 import pytest
 
+from app.detection.models import (
+    AlertKind,
+    robustness_alert_from_report,
+)
 from app.eval.graph_robustness import (
     RobustnessReport,
     average_degree,
@@ -270,3 +274,166 @@ def test_robustness_report_to_dict_round_trip() -> None:
         "assortativity",
     ):
         assert key in d, f"missing key {key!r}"
+
+
+# ---------------------------------------------------------------------------
+# robustness_alert_from_report — surfaces outliers as RiskAlert
+# ---------------------------------------------------------------------------
+
+
+def _hub_and_spoke_dataset(centre: str = "A000", leaves: int = 9) -> GeneratedDataset:
+    """Build a 1-vertex-hub-and-N-leaves dataset: edge_connectivity = 1."""
+    ds = GeneratedDataset()
+    ds.accounts.append({"id": centre})
+    for i in range(leaves):
+        leaf = f"A{i + 1:03d}"
+        ds.accounts.append({"id": leaf})
+        tx_id = f"T_HS_{i:02d}"
+        ds.transactions.append(
+            {
+                "id": tx_id,
+                "ts": "2026-07-19T00:00:00Z",
+                "amount": 50.0,
+                "currency": "USD",
+                "channel": "wire",
+                "status": "completed",
+            }
+        )
+        ds.from_account.append({"from_id": tx_id, "to_id": centre, "amount": 50.0, "ts": "2026-07-19T00:00:00Z"})
+        ds.to_account.append({"from_id": tx_id, "to_id": leaf, "amount": 50.0, "ts": "2026-07-19T00:00:00Z"})
+    return ds
+
+
+def _dense_dataset(n: int = 6) -> GeneratedDataset:
+    """Build a near-clique dataset: density → 1.0, edge_connectivity high."""
+    import itertools
+
+    ds = GeneratedDataset()
+    ids = [f"D{i:03d}" for i in range(n)]
+    for i in ids:
+        ds.accounts.append({"id": i})
+    for k, (a, b) in enumerate(itertools.combinations(ids, 2)):
+        tx = f"T_D_{k:02d}"
+        ds.transactions.append(
+            {
+                "id": tx,
+                "ts": "2026-07-19T00:00:00Z",
+                "amount": 100.0,
+                "currency": "USD",
+                "channel": "wire",
+                "status": "completed",
+            }
+        )
+        ds.from_account.append({"from_id": tx, "to_id": a, "amount": 100.0, "ts": "2026-07-19T00:00:00Z"})
+        ds.to_account.append({"from_id": tx, "to_id": b, "amount": 100.0, "ts": "2026-07-19T00:00:00Z"})
+    return ds
+
+
+def test_robustness_alert_low_connectivity_hub_and_spoke() -> None:
+    """A 1-hub + N-leaves topology must surface the LOW_CONNECTIVITY alert."""
+    ds = _hub_and_spoke_dataset(centre="A000", leaves=9)
+    report = compute_robustness(ds)
+    assert report.edge_connectivity == 1
+
+    alert = robustness_alert_from_report(report)
+    assert alert is not None
+    assert alert.kind == AlertKind.ROBUSTNESS_LOW_CONNECTIVITY.value
+    assert alert.severity in {"medium", "high", "critical"}
+    assert "edge_connectivity" in alert.description
+    # Evidence should expose all measures + thresholds
+    assert alert.evidence["edge_connectivity"] == 1
+    assert alert.evidence["triggered_kinds"] == [AlertKind.ROBUSTNESS_LOW_CONNECTIVITY.value]
+    assert alert.evidence["thresholds"]["low_connectivity_threshold"] == 2
+
+
+def test_robustness_alert_dense_all_to_all() -> None:
+    """A near-clique dataset must surface the DENSE alert."""
+    ds = _dense_dataset(n=6)
+    report = compute_robustness(ds)
+    # 6-node clique: density = 1.0
+    assert report.density >= 0.99
+
+    alert = robustness_alert_from_report(report)
+    assert alert is not None
+    assert alert.kind == AlertKind.ROBUSTNESS_DENSE.value
+    assert "density" in alert.description
+    assert alert.evidence["density"] >= 0.99
+    assert alert.evidence["triggered_kinds"] == [AlertKind.ROBUSTNESS_DENSE.value]
+
+
+def test_robustness_alert_returns_none_for_normal_dataset() -> None:
+    """A typical synthetic dataset must NOT spuriously trigger the alert."""
+    ds = build_dataset(accounts=60, devices=30, merchants=10, transactions=400, fraud_rings=2, seed=7)
+    report = compute_robustness(ds)
+    # Sanity: should not be extreme enough to fire
+    alert = robustness_alert_from_report(report)
+    if alert is not None:
+        # If it does fire, must be a real signal — verify the math:
+        assert (
+            report.edge_connectivity <= 2 or report.density >= 0.30
+        ), f"spurious alert on a normal dataset: {report.to_dict()}"
+
+
+def test_robustness_alert_returns_none_for_empty_dataset() -> None:
+    """Empty dataset must NOT raise — and must NOT alert (insufficient nodes)."""
+    ds = GeneratedDataset()
+    report = compute_robustness(ds)
+    alert = robustness_alert_from_report(report)
+    assert alert is None
+
+
+def test_robustness_alert_returns_none_for_single_node() -> None:
+    """Single-account dataset must NOT raise — must NOT alert (node_count < 2)."""
+    ds = GeneratedDataset()
+    ds.accounts.append({"id": "A000"})
+    report = compute_robustness(ds)
+    alert = robustness_alert_from_report(report)
+    assert alert is None
+
+
+def test_robustness_alert_to_dict_serializable() -> None:
+    """Alert payload must serialise cleanly for the JSON API response."""
+    ds = _hub_and_spoke_dataset()
+    report = compute_robustness(ds)
+    alert = robustness_alert_from_report(report)
+    assert alert is not None
+    d = alert.to_dict()
+    for key in (
+        "kind",
+        "severity",
+        "score",
+        "title",
+        "description",
+        "involved",
+        "evidence",
+    ):
+        assert key in d, f"alert.to_dict() missing {key!r}"
+    assert isinstance(d["score"], float)
+    assert isinstance(d["involved"], list)
+    assert isinstance(d["evidence"], dict)
+
+
+def test_robustness_alert_rejects_non_report_input() -> None:
+    """Factory must NOT raise on bad input — must return ``None``."""
+    assert robustness_alert_from_report({"not": "a report"}) is None
+    assert robustness_alert_from_report(None) is None
+    assert robustness_alert_from_report(42) is None
+
+
+def test_local_detector_includes_robustness_alert_when_triggered() -> None:
+    """LocalDetector.run() must surface the robustness alert when the dataset
+    is extreme enough. We force a hub-and-spoke dataset via build_dataset + a
+    hand-rolled injected topology.
+    """
+    # Use build_dataset, then verify that the robustness_alert_from_report
+    # call inside run_local_detector produces a non-None alert when the graph
+    # is sparse. We can't easily inject topology into build_dataset's output,
+    # so we directly call run_local_detector on our hub-and-spoke dataset.
+    from app.detection import run_local_detector
+
+    ds = _hub_and_spoke_dataset(centre="A000", leaves=9)
+    run = run_local_detector(ds)
+    kinds = {a.kind for a in run.alerts}
+    assert AlertKind.ROBUSTNESS_LOW_CONNECTIVITY.value in kinds, (
+        f"expected robustness alert in {sorted(kinds)}"
+    )

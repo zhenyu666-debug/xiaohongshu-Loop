@@ -15,6 +15,7 @@ from .models import (
     lpcc_alert_from_gsql,
     pagerank_alert_from_gsql,
     ring_alert_from_gsql,
+    robustness_alert_from_report,
     shared_device_alert_from_gsql,
     wcc_alert_from_gsql,
 )
@@ -36,6 +37,7 @@ __all__ = [
     "lpcc_alert_from_gsql",
     "pagerank_alert_from_gsql",
     "ring_alert_from_gsql",
+    "robustness_alert_from_report",
     "run_local_detector",
     "run_remote_detector",
     "shared_device_alert_from_gsql",

@@ -25,11 +25,13 @@ from collections import Counter, defaultdict
 from datetime import datetime, timezone
 
 from ..loader.synth_generator import GeneratedDataset
+from ..eval.graph_robustness import compute_robustness
 from .models import (
     AlertSeverity,
     DetectionRun,
     GraphSnapshot,
     RiskAlert,
+    robustness_alert_from_report,
 )
 
 
@@ -255,6 +257,12 @@ def run_local_detector(
     top = find_top_centrality(ds, top_k=top_k)
     if top:
         alerts.append(top)
+
+    # Graph-robustness signal (TIGER port): surfaces hub-and-spoke / dense
+    # funds-flow topologies alongside the per-account alerts above.
+    robustness_alert = robustness_alert_from_report(compute_robustness(ds))
+    if robustness_alert:
+        alerts.append(robustness_alert)
 
     elapsed_ms = int((time.perf_counter() - t0) * 1000)
     ended = _now()

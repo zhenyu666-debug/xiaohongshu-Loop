@@ -154,3 +154,91 @@ def test_profile_single_graph_funds(monkeypatch) -> None:
         body = r.json()
         assert body["mode"] == "funds"
         assert body["stats"]["cumulative_amount"] >= 0.0
+
+
+# ------------------------------------------------------------------
+# Graph robustness endpoint (TIGER port surface)
+# ------------------------------------------------------------------
+
+
+def test_robustness_endpoint_requires_dataset() -> None:
+    """Without a dataset, /api/robustness must return 400 with detail."""
+    STATE["latest_dataset"] = None
+    with _client() as c:
+        r = c.get("/api/robustness")
+        assert r.status_code == 400
+        assert "no dataset" in r.json()["detail"]
+
+
+def test_robustness_endpoint_returns_report_and_alert(monkeypatch) -> None:
+    """With a normal dataset, the endpoint returns report + (possibly null) alert."""
+    from app import api as api_module
+    from app.loader.synth_generator import build_dataset
+
+    monkeypatch.setattr(api_module, "DATA_SEED_DIR", _tmp_seed_dir())
+    STATE["latest_dataset"] = build_dataset(
+        accounts=60, devices=30, merchants=10, transactions=400, fraud_rings=2, seed=7
+    )
+    with _client() as c:
+        r = c.get("/api/robustness")
+        assert r.status_code == 200, f"got {r.status_code}: {r.text}"
+        body = r.json()
+        assert body["ok"] is True
+        # Report has all measure keys
+        for key in (
+            "node_count",
+            "edge_count",
+            "density",
+            "avg_degree",
+            "clustering_coefficient",
+            "diameter_small",
+            "node_connectivity_estimate",
+            "edge_connectivity",
+            "assortativity",
+        ):
+            assert key in body["report"], f"missing {key!r} in report"
+        # alert is either None or a dict
+        assert body["alert"] is None or isinstance(body["alert"], dict)
+
+
+def test_robustness_endpoint_surfaces_low_connectivity_alert(monkeypatch) -> None:
+    """When the dataset is a hub-and-spoke (edge_connectivity=1), the endpoint
+    must surface a non-null alert with kind=graph_robustness_low_connectivity.
+    """
+    from app import api as api_module
+    from app.loader.synth_generator import GeneratedDataset
+
+    # Hand-roll a hub-and-spoke dataset: 1 centre + 9 leaves, all routed via centre.
+    ds = GeneratedDataset()
+    ds.accounts.append({"id": "A000"})
+    for i in range(9):
+        leaf = f"A{i + 1:03d}"
+        ds.accounts.append({"id": leaf})
+        tx_id = f"T_HS_{i:02d}"
+        ds.transactions.append(
+            {
+                "id": tx_id,
+                "ts": "2026-07-19T00:00:00Z",
+                "amount": 50.0,
+                "currency": "USD",
+                "channel": "wire",
+                "status": "completed",
+            }
+        )
+        ds.from_account.append(
+            {"from_id": tx_id, "to_id": "A000", "amount": 50.0, "ts": "2026-07-19T00:00:00Z"}
+        )
+        ds.to_account.append(
+            {"from_id": tx_id, "to_id": leaf, "amount": 50.0, "ts": "2026-07-19T00:00:00Z"}
+        )
+
+    monkeypatch.setattr(api_module, "DATA_SEED_DIR", _tmp_seed_dir())
+    STATE["latest_dataset"] = ds
+    with _client() as c:
+        r = c.get("/api/robustness")
+        assert r.status_code == 200, f"got {r.status_code}: {r.text}"
+        body = r.json()
+        assert body["report"]["edge_connectivity"] == 1
+        assert body["alert"] is not None
+        assert body["alert"]["kind"] == "graph_robustness_low_connectivity"
+        assert body["alert"]["evidence"]["edge_connectivity"] == 1

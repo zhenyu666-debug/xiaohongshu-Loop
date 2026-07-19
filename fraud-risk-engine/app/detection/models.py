@@ -81,6 +81,9 @@ class AlertKind(str, Enum):
     TLP_RESOURCE_ALLOC = "tlp_resource_allocation"
     TLP_SAME_COMMUNITY = "tlp_same_community"
     TLP_TOTAL_NEIGHBORS = "tlp_total_neighbors"
+    # ── Graph robustness (TIGER port) ─────────────────────────────────────
+    ROBUSTNESS_LOW_CONNECTIVITY = "graph_robustness_low_connectivity"
+    ROBUSTNESS_DENSE = "graph_robustness_dense"
 
 
 @dataclass
@@ -1021,3 +1024,109 @@ def total_neighbors_alert_from_gsql(result: dict) -> RiskAlert | None:
 
 def empty_snapshot() -> GraphSnapshot:
     return GraphSnapshot()
+
+
+# ---------------------------------------------------------------------------
+# Graph-robustness alert factory (TIGER port surface)
+# ---------------------------------------------------------------------------
+
+
+def robustness_alert_from_report(
+    report: Any,
+    *,
+    low_connectivity_threshold: int = 2,
+    dense_density_threshold: float = 0.30,
+) -> RiskAlert | None:
+    """Build a :class:`RiskAlert` from a :class:`RobustnessReport`.
+
+    Surfaces two signals from the stdlib-only TIGER port:
+
+    - ``graph_robustness_low_connectivity`` when ``edge_connectivity <=
+      low_connectivity_threshold`` — the graph can be partitioned by removing
+      just a handful of shared devices / accounts. Classic mule-pool / hub
+      topology.
+    - ``graph_robustness_dense`` when ``density >= dense_density_threshold`` —
+      the funds-flow graph is unusually well-connected, often a sign of
+      circular-routing or money-laundering chains.
+
+    Both are independent: a star-shaped ring returns the first, a tightly
+    woven cycle returns the second. Returns ``None`` only when neither
+    condition holds.
+    """
+    from ..eval.graph_robustness import RobustnessReport  # local import: avoid cycle
+
+    if not isinstance(report, RobustnessReport):
+        return None
+
+    if report.node_count < 2:
+        return None  # too few nodes for robustness to be meaningful
+
+    signals: list[str] = []
+    kinds: list[str] = []
+    severity_score = 0.0
+    involved: list[str] = []
+
+    if report.edge_connectivity <= low_connectivity_threshold:
+        kinds.append(AlertKind.ROBUSTNESS_LOW_CONNECTIVITY.value)
+        signals.append(
+            f"edge_connectivity={report.edge_connectivity} "
+            f"(<= {low_connectivity_threshold}) — graph is partitionable "
+            f"by removing {report.edge_connectivity} edge(s)"
+        )
+        # Low connectivity tends to correlate with hub-and-spoke mule pools;
+        # surface it as MEDIUM-HIGH depending on how sparse it is.
+        if report.edge_connectivity == 0:
+            severity_score = max(severity_score, 0.55)
+        elif report.edge_connectivity == 1:
+            severity_score = max(severity_score, 0.65)
+        else:
+            severity_score = max(severity_score, 0.50)
+        involved.append(f"edge_conn={report.edge_connectivity}")
+
+    if report.density >= dense_density_threshold:
+        kinds.append(AlertKind.ROBUSTNESS_DENSE.value)
+        signals.append(
+            f"density={report.density} (>= {dense_density_threshold}) — "
+            f"funds-flow graph is unusually well-connected (avg degree "
+            f"{report.avg_degree})"
+        )
+        severity_score = max(severity_score, min(1.0, 0.3 + 0.5 * report.density))
+        involved.append(f"density={report.density}")
+
+    if not signals:
+        return None
+
+    if severity_score >= 0.7:
+        severity = AlertSeverity.HIGH.value
+    elif severity_score >= 0.45:
+        severity = AlertSeverity.MEDIUM.value
+    else:
+        severity = AlertSeverity.LOW.value
+
+    # One alert per category so the dashboard can filter on them individually.
+    # We return the higher-severity of the two; the evidence carries both so
+    # the frontend can still distinguish.
+    return RiskAlert(
+        kind=kinds[0],
+        severity=severity,
+        score=round(min(1.0, severity_score), 4),
+        title="Graph robustness signals (TIGER port)",
+        description="; ".join(signals),
+        involved=involved,
+        evidence={
+            "node_count": report.node_count,
+            "edge_count": report.edge_count,
+            "density": report.density,
+            "avg_degree": report.avg_degree,
+            "clustering_coefficient": report.clustering_coefficient,
+            "diameter_small": report.diameter_small,
+            "edge_connectivity": report.edge_connectivity,
+            "node_connectivity_estimate": report.node_connectivity_estimate,
+            "assortativity": report.assortativity,
+            "triggered_kinds": kinds,
+            "thresholds": {
+                "low_connectivity_threshold": low_connectivity_threshold,
+                "dense_density_threshold": dense_density_threshold,
+            },
+        },
+    )
