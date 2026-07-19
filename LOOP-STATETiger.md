@@ -185,18 +185,33 @@ LOOP-STATETiger.md ???2026-07-18 10:25 ~ 10:55???? stage 5-9 ??**??????**? git ?
   - **Pytest**: 76/76 green (was 69 → +7 new medgraph tests, 41s).
   - **Push**: same `xiaohongshu-Loop` remote as before; retry policy per CI-WORKFLOW-PATCH-NEEDS-SCOPE.md if GFW resets.
 
+- 2026-07-19 10:15 — Tigerlily/TIGER ports + BankFraud loader + React Graph Studio.
+  - **TigerLily port** (commit `cb29b61 feat(queries): port TigerLily edge-feature operators`): stdlib-only mirror of `tigerlily.operator` (Apache-2.0, Benedek Rozemberczki). Functions: `hadamard_operator`, `difference_operator`, `l1_norm_operator`, `l2_norm_operator`, `concatenation_operator`, `cosine_similarity`, plus `apply_operator` dispatch and `OPERATORS` registry. 13 tests covering hand-computed expected values + edge cases (mismatch raises ValueError, zero-vector cosine).
+  - **TIGER port** (commit `78f5851 feat(eval): port TIGER graph-robustness measures`): stdlib-only mirror of `graph_tiger.measures` (MIT, Scott Freitas et al., 2021). Functions: `density`, `average_degree`, `clustering_coefficient`, `diameter_small`, `edge_connectivity_lower_bound`, `node_connectivity_lower_bound`, `degree_assortativity`, `spectral_radius_estimate`. Composite: `compute_robustness(GeneratedDataset) -> RobustnessReport`. 16 tests. Heavy `networkx`-dependent measures (avg_distance, natural_connectivity, eigen centrality) intentionally NOT ported — upstream mirrored under `memory/references/tiger-graph-robustness/`.
+  - **Bug fixes during the port**:
+    - `clustering_coefficient` was counting `v in neigh_set` instead of checking whether v and w (both neighbours of u) are actually connected — gave a star centre a positive local CC. Fixed to count real triangles.
+    - `_build_undirected_adj` did not pre-seed `id_to_idx` with every account in the dataset, so isolated / self-loop-only accounts vanished from `node_count`. Fixed by pre-seeding from `ds.accounts` before processing edges.
+    - 3 inline cycle tests (`test_average_degree_cycle`, `test_diameter_cycle_4`, `test_assortativity_cycle_4_is_zero`) used `adj = [[1], [0, 2], [1, 3], [2]]` which is a path, not a cycle. Corrected to `[[1, 3], [0, 2], [1, 3], [0, 2]]`.
+  - **Pytest**: 110/110 green (was 76 → +13 TigerLily + +16 TIGER +5 misc, 16.33s).
+  - **Push**: same `xiaohongshu-Loop` remote, both `cb29b61` and `78f5851` now at `origin/main = 78f5851`.
+  - **Decision on Tigerlily vs TIGER**: Tigerlily = port operators to stdlib (no numpy); TIGER = port graph_robustness as a reference-only subset (no networkx). NM-1 closed.
 
 ## Next steps (priority)
 
-1. Wait for `a65092b8` (MedGraph pytest + commit + push) — confirm HEAD on origin/main.
-2. Wait for `29e4a59d` (zip extraction + analysis report) — decide integration path for Tigerlily/TIGER.
-3. After both clear: append MedGraph + TigerLily/TIGER entries to LOOP-STATE; bump CHANGELOG.
-4. If shell still broken next run, log to `Needs Me` and have user retry / restart Cursor.
+1. ~~Wait for `a65092b8` (MedGraph pytest + commit + push) — confirm HEAD on origin/main.~~ **done** (`b5b9d12` at origin/main).
+2. ~~Wait for `29e4a59d` (zip extraction + analysis report) — decide integration path for Tigerlily/TIGER.~~ **done** — Tigerlily ported to `app/queries/edge_features.py`, TIGER ported to `app/eval/graph_robustness.py`. Both stdlib-only.
+3. After both clear: append MedGraph + TigerLily/TIGER entries to LOOP-STATE; bump CHANGELOG. **partially done** — entry added above; CHANGELOG bump still pending.
+4. Wire `RobustnessReport` into the AlertKind enum so `TigerGraphDetector.run()` surfaces low-connectivity rings alongside existing `embedding_cosine_sim` / WCC / LPCC alerts.
+5. Add a `GET /api/robustness` endpoint that returns `compute_robustness(build_dataset(...))` for the active scenario so the Dashboard tab can render the measures table.
+6. Bump CHANGELOG to v0.3.0 reflecting TigerLily + TIGER + MedGraph + GDSL ports.
+7. If shell still broken next run, log to `Needs Me` and have user retry / restart Cursor.
 
 ## Needs Me (updated)
 
 | # | Item | Why | Severity |
 |---|---|---|---|
-| NM-1 | Decide Tigerlily/TIGER integration scope | Mirror-only or full port (algorithms / parsers) | medium |
+| NM-1 | ~~Decide Tigerlily/TIGER integration scope~~ | ~~Mirror-only or full port~~ | **resolved** — stdlib-only ports landed in `app/queries/edge_features.py` + `app/eval/graph_robustness.py` |
 | NM-2 | Re-confirm remote URL is correct (`xiaohongshu-Loop` vs `Tigergraph.git`) | Last few pushes went to `xiaohongshu-Loop`; earlier commits implied `Tigergraph.git`. Currently origin = xiaohongshu-Loop. | medium |
 | NM-3 | Restart Cursor IDE if shell stays broken | All future commits blocked otherwise | low (transient) |
+| NM-4 | Bump CHANGELOG to v0.3.0 + README "Status: 110/110" | Reflect TigerLily + TIGER + MedGraph + GDSL ports | medium |
+
