@@ -1,0 +1,70 @@
+-- Find similar patients using cosine similarity over demographics
+USE GRAPH MedGraph
+CREATE QUERY cosine_patient_demographics(STRING firstName, STRING lastName, INT topK)
+RETURNS(MapAccum<VERTEX, DOUBLE>) {
+    MapAccum<VERTEX, DOUBLE> @@topk_result;
+    SumAccum<DOUBLE> @latitude, @longitude, @distance, @similarity, @ageCount;
+    SumAccum<INT> @age, @sexCount, @raceCount, @ethnicityCount;
+    SumAccum<STRING> @sex, @race, @ethnicity;
+    MaxAccum<DOUBLE> @@maxDistance;
+    STRING patientSex, patientRace, patientEthnicity, patientID;
+    INT patientAge;
+    DOUBLE patientLat, patientLon, dLat, dLon, a, c, d;
+
+    SOURCE = {Patient.*};
+
+    -- Gather patient attributes
+    patients = SELECT s FROM SOURCE:s - (PATIENT_GENDER:e) - :t
+    WHERE s.lastName == lastName AND s.firstName == firstName
+    ACCUM
+      s.@sex = t.gender_id,
+      patientSex = t.gender_id,
+      s.@age = year(now()) - year(s.birthday),
+      patientAge = year(now()) - year(s.birthday),
+      patientID = s.patient_id;
+
+    patients = SELECT s FROM patients:s - (PATIENT_RACE:e) - :t
+    ACCUM s.@race = t.race_id, patientRace = t.race_id;
+
+    patients = SELECT s FROM patients:s - (PATIENT_ETHNICITY:e) - :t
+    ACCUM s.@ethnicity = t.ethnicity_id, patientEthnicity = t.ethnicity_id;
+
+    patients = SELECT s FROM patients:s - (PATIENT_ADDRESS:e) - Address:t
+    ACCUM s.@latitude = t.lat, s.@longitude = t.lon,
+          patientLat = t.lat, patientLon = t.lon;
+
+    PRINT patients[patients.lastName, patients.firstName, patients.patient_id,
+                  patients.@sex, patients.@age, patients.@race,
+                  patients.@ethnicity, patients.@latitude, patients.@longitude];
+
+    -- Compare with all other patients
+    subjects = SELECT s FROM SOURCE:s - (PATIENT_GENDER:e) - :t
+    WHERE s.patient_id != patientID
+    ACCUM s.@age = year(now()) - year(s.birthday),
+          IF t.gender_id == patientSex THEN s.@sexCount = 1 ELSE s.@sexCount = 0 END
+    POST-ACCUM
+        IF s.@age > patientAge THEN s.@ageCount = patientAge / s.@age
+        ELSE s.@ageCount = s.@age / patientAge END;
+
+    subjects = SELECT s FROM subjects:s - (PATIENT_RACE:e) - :t
+      ACCUM IF t.race_id == patientRace THEN s.@raceCount = 1 ELSE s.@raceCount = 0 END;
+
+    subjects = SELECT s FROM subjects:s - (PATIENT_ETHNICITY:e) - :t
+      ACCUM If t.ethnicity_id == patientEthnicity
+            THEN s.@ethnicityCount = 1 ELSE s.@ethnicityCount = 0 END;
+
+    subjects = SELECT s FROM subjects:s - (PATIENT_ADDRESS:e) - :t
+      ACCUM s.@distance = check_distance(t, patientLat, patientLon)
+      POST-ACCUM @@maxDistance += s.@distance,
+        s.@similarity = (s.@ageCount + s.@sexCount + s.@ethnicityCount +
+                         s.@raceCount + (1-(s.@distance / @@maxDistance)))/6
+      ORDER BY s.@similarity DESC
+      LIMIT topK;
+
+    subjects = SELECT s FROM subjects: s
+      ACCUM @@topk_result += (s -> s.@similarity);
+
+    PRINT @@topk_result;
+    RETURN @@topk_result;
+}
+INSTALL QUERY cosine_patient_demographics

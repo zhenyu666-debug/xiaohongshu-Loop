@@ -1,0 +1,14 @@
+-- Get all conditions for a patient
+-- Source: Synthea_Medgraph.ipynb
+USE GRAPH MedGraph
+CREATE QUERY get_patient_conditions(STRING firstName, STRING lastName) FOR GRAPH MedGraph {
+    Seed = {Patient.*};
+    patient = SELECT s
+              FROM Seed:s
+              WHERE s.lastName == lastName AND s.firstName == firstName;
+    response = SELECT c
+               FROM patient:s - (PATIENT_HAS_CONDITION:e) - Conditions:c;
+    PRINT patient;
+    PRINT response;
+}
+INSTALL QUERY get_patient_conditions

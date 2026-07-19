@@ -1,4 +1,4 @@
-"""FastAPI surface for fraud-risk-engine.
+﻿"""FastAPI surface for fraud-risk-engine.
 
 Endpoints:
 
@@ -378,6 +378,76 @@ def register_routes(app: FastAPI, settings: Settings) -> None:
         - fraud_ratio: fraction of fraud nodes in the sample (default 0.5)
         """
         return bankfraud_build(sample_size=sample_size, fraud_ratio=fraud_ratio)
+
+    # ------------------------------------------------------------------
+    # MedGraph — Synthea-style patient health graph
+    # ------------------------------------------------------------------
+
+    @app.get("/api/medgraph/sample")
+    def medgraph_sample(
+        n_patients: int = Query(default=80, ge=1, le=500),
+        seed: int = Query(default=42, ge=0),
+    ) -> dict[str, Any]:
+        """Serve a synthetic Synthea-style patient graph.
+
+        Generates n_patients patients with encounters, conditions, medications,
+        providers, and payers — linked in a D3-ready graph format.
+        """
+        from .loader.medgraph_loader import build_medgraph_response
+
+        return build_medgraph_response(n_patients=n_patients, seed=seed)
+
+    @app.get("/api/medgraph/patient/{patient_id}")
+    def medgraph_patient(patient_id: str) -> dict[str, Any]:
+        """Return full profile of a single patient: demographics + clinical history."""
+        from .loader.medgraph_loader import gen_medgraph
+
+        g = gen_medgraph(n_patients=80, seed=42)
+        patient = None
+        for p in g.patients:
+            if p.patient_id == patient_id:
+                patient = p
+                break
+        if not patient:
+            raise HTTPException(status_code=404, detail="Patient not found")
+
+        # Gather encounters, conditions, medications for this patient
+        patient_encounters = [e for e in g.encounters if e.patient_id == patient_id]
+        patient_conditions = [c for c in g.conditions if any(
+            eid in patient.encounter_ids for eid in patient.condition_ids
+        )]
+        patient_meds = [m for m in g.medications if any(
+            eid in patient.encounter_ids for eid in patient.medication_ids
+        )]
+        return {
+            "patient": {
+                "id": patient.patient_id,
+                "name": f"{patient.first_name} {patient.last_name}",
+                "gender": patient.gender,
+                "race": patient.race,
+                "birthday": patient.birthday,
+                "city": patient.city,
+                "lat": patient.lat,
+                "lon": patient.lon,
+            },
+            "encounters": [
+                {
+                    "id": e.encounter_id,
+                    "class": e.class_type,
+                    "cost": e.total_cost,
+                    "start": e.start_time,
+                }
+                for e in patient_encounters
+            ],
+            "conditions": [
+                {"id": c.condition_id, "description": c.description, "code": c.code, "start": c.start_date}
+                for c in patient_conditions
+            ],
+            "medications": [
+                {"id": m.medication_id, "description": m.description, "code": m.code, "cost": m.base_cost}
+                for m in patient_meds
+            ],
+        }
 
 
 # ---------------------------------------------------------------------------

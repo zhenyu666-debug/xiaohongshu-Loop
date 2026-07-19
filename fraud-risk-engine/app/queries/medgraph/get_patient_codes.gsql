@@ -1,0 +1,17 @@
+-- Get all SNOMED codes for a patient
+USE GRAPH MedGraph
+CREATE QUERY get_patient_codes(STRING firstName, STRING lastName) FOR GRAPH MedGraph {
+    Seed = {Patient.*};
+    patient = SELECT s
+              FROM Seed:s
+              WHERE s.lastName == lastName AND s.firstName == firstName;
+
+    -- All SNOMED codes reachable from this patient
+    codes = SELECT c
+            FROM patient:s - (:e) - :c
+            WHERE c.type == "SnomedCode";
+
+    PRINT patient;
+    PRINT codes;
+}
+INSTALL QUERY get_patient_codes

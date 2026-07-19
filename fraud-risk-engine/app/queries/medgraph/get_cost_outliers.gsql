@@ -1,0 +1,17 @@
+-- Find high-cost outliers above threshold fraction of average
+USE GRAPH MedGraph
+CREATE QUERY get_cost_outliers(VERTEX<SnomedCode> inCode, FLOAT threshold = 0.9) FOR GRAPH MedGraph RETURNS(SET<VERTEX>) {
+  MapAccum<VERTEX, DOUBLE> @@highCosts;
+  DOUBLE avgCost, mult;
+  avgCost = get_code_cost(inCode);
+  mult = threshold + 1;
+  code = {inCode};
+  payments = SELECT p FROM code:c - (MEDICATION_CODE|PROCEDURE_CODE|IMMUNIZATION_CODE) - :p
+    WHERE p.baseCost > avgCost * mult
+    ACCUM @@highCosts += (p -> p.baseCost)
+    ORDER BY p.baseCost DESC;
+  PRINT avgCost;
+  PRINT @@highCosts;
+  RETURN payments;
+}
+INSTALL QUERY get_cost_outliers

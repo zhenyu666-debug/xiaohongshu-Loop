@@ -1,0 +1,20 @@
+-- Haversine distance between two coordinate pairs
+USE GRAPH MedGraph
+CREATE QUERY check_distance(VERTEX<Address> l1, DOUBLE pLat, DOUBLE pLon) FOR GRAPH MedGraph RETURNS(FLOAT) {
+  DOUBLE a, c, distance, rads;
+  DOUBLE x, y, r;
+  PRINT l1.lat;
+  PRINT l1.lon;
+  PRINT pLat;
+  PRINT pLon;
+  r = 6371;  -- Earth radius in KM
+  rads = 0.0174532925;  -- pi / 180
+  x = (pLat - l1.lat);
+  y = rads*(pLon - l1.lon);
+  a = sin(x/2)*sin(x/2)+cos(rads*(l1.lat))*cos(rads*(pLat))*sin(y/2)*sin(y/2);
+  c = 2*atan2(sqrt(a), sqrt(1-a));
+  distance = r*c;
+  PRINT distance;
+  RETURN distance;
+}
+INSTALL QUERY check_distance

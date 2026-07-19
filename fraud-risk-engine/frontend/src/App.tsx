@@ -6,8 +6,9 @@ import { LoadData } from './pages/LoadData';
 import { WriteQueries } from './pages/WriteQueries';
 import { ExploreGraph } from './pages/ExploreGraph';
 import { PaySimView } from './pages/PaySimView';
+import { MedGraphView } from './pages/MedGraphView';
 
-type Page = 'design' | 'map' | 'load' | 'queries' | 'explore' | 'paysim';
+type Page = 'design' | 'map' | 'load' | 'queries' | 'explore' | 'paysim' | 'medgraph';
 
 const NAV_ITEMS: { id: Page; label: string; icon: string }[] = [
   { id: 'design', label: 'Design Schema', icon: '⬡' },
@@ -16,6 +17,7 @@ const NAV_ITEMS: { id: Page; label: string; icon: string }[] = [
   { id: 'queries', label: 'Write Queries', icon: '✎' },
   { id: 'explore', label: 'Explore Graph', icon: '◎' },
   { id: 'paysim', label: 'PaySim Fraud', icon: '⚠' },
+  { id: 'medgraph', label: 'MedGraph', icon: '✚' },
 ];
 
 function App() {
@@ -29,6 +31,7 @@ function App() {
       case 'queries':  return <WriteQueries />;
       case 'explore':  return <ExploreGraph />;
       case 'paysim':   return <PaySimView />;
+      case 'medgraph': return <MedGraphView />;
     }
   };
 

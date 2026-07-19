@@ -1,0 +1,11 @@
+-- Get average cost for a SNOMED code across all medications/procedures/immunizations
+USE GRAPH MedGraph
+CREATE QUERY get_code_cost(VERTEX<SnomedCode> inCode) FOR GRAPH MedGraph RETURNS(DOUBLE) {
+  AvgAccum @@avgCost;
+  code = {inCode};
+  payments = SELECT p FROM code:c - (MEDICATION_CODE|PROCEDURE_CODE|IMMUNIZATION_CODE) - :p
+    ACCUM @@avgCost += p.baseCost;
+  PRINT @@avgCost;
+  RETURN @@avgCost;
+}
+INSTALL QUERY get_code_cost
