@@ -1,5 +1,24 @@
 ﻿# CHANGELOG
 
+## 0.3.1 — 2026-07-19
+
+### Added
+
+- `bankfraud_loader` `n_fraud` parameter — explicit absolute count of fraud
+  nodes in the sample graph, overrides `fraud_ratio` when supplied (clamped
+  to available fraud rows and to `sample_size`). Wired through
+  `build_graph`, `build_api_response`, and the `/api/bankfraud/sample` query
+  surface (`n_fraud=0..218`).
+- `tests/test_bankfraud.py` — 7 unit tests covering ratio contract,
+  `n_fraud` override / clamp / zero / negative, and `build_api_response`
+  threading.
+- `tests/test_api.py` — 4 API tests covering the `n_fraud` query param
+  (override, zero, clamp, default).
+
+### Tests
+
+- 132/132 green (was 121 → +11).
+
 ## 0.3.0 — 2026-07-19
 
 v0.3.0 extends the algorithm portfolio with graph-theoretic robustness

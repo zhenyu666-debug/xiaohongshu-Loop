@@ -131,11 +131,14 @@ def build_graph(
     sample_size: int = 300,
     fraud_ratio: float = 0.5,
     seed: int = 42,
+    n_fraud: int | None = None,
 ) -> dict[str, Any]:
     """Build graph nodes + edges from the banking fraud data.
 
     - sample_size: max total nodes
     - fraud_ratio: fraction of fraud nodes to include (balance the display)
+    - n_fraud: absolute count of fraud nodes; if given (>= 0) it overrides
+      ``fraud_ratio``. Clamped to ``len(fraud_rows)`` and to ``sample_size``.
     """
     import random
     rng = random.Random(seed)
@@ -144,9 +147,15 @@ def build_graph(
     fraud_rows = [r for r in rows if r["is_fraud"] == 1]
     normal_rows = [r for r in rows if r["is_fraud"] == 0]
 
-    # Sample
-    max_fraud = int(sample_size * fraud_ratio)
-    max_normal = sample_size - max_fraud
+    # Resolve target fraud count: explicit n_fraud wins over ratio; ratio still
+    # acts as a fallback when n_fraud is None / negative.
+    if n_fraud is not None and n_fraud >= 0:
+        max_fraud = min(int(n_fraud), len(fraud_rows))
+    else:
+        max_fraud = int(sample_size * fraud_ratio)
+    max_fraud = max(0, min(max_fraud, sample_size))
+    max_normal = max(0, sample_size - max_fraud)
+
     sampled = (
         rng.sample(fraud_rows, min(max_fraud, len(fraud_rows))) +
         rng.sample(normal_rows, min(max_normal, len(normal_rows)))
@@ -240,11 +249,22 @@ def build_api_response(
     *,
     sample_size: int = 300,
     fraud_ratio: float = 0.5,
+    n_fraud: int | None = None,
 ) -> dict[str, Any]:
-    """Build the full API response payload."""
+    """Build the full API response payload.
+
+    - sample_size: max graph nodes (default 300)
+    - fraud_ratio: fraction of fraud nodes when ``n_fraud`` is not given
+    - n_fraud: explicit fraud-node count; overrides ``fraud_ratio`` when set
+    """
     rows = rows or load_full_data()
     stats = compute_stats(rows)
-    graph = build_graph(rows, sample_size=sample_size, fraud_ratio=fraud_ratio)
+    graph = build_graph(
+        rows,
+        sample_size=sample_size,
+        fraud_ratio=fraud_ratio,
+        n_fraud=n_fraud,
+    )
 
     return {
         "ok": True,
@@ -266,12 +286,23 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Banking fraud dataset loader")
     parser.add_argument("--xlsx", default=str(XLSX_PATH), help="Path to xlsx file")
     parser.add_argument("--sample", type=int, default=300, help="Graph sample size")
-    parser.add_argument("--fraud-ratio", type=float, default=0.5, help="Fraud node ratio")
+    parser.add_argument(
+        "--fraud-ratio", type=float, default=0.5,
+        help="Fraud node ratio (ignored when --n-fraud is set)",
+    )
+    parser.add_argument(
+        "--n-fraud", type=int, default=None,
+        help="Absolute count of fraud nodes; overrides --fraud-ratio when given",
+    )
     args = parser.parse_args(argv)
 
     XLSX_PATH = Path(args.xlsx)
 
-    resp = build_api_response(sample_size=args.sample, fraud_ratio=args.fraud_ratio)
+    resp = build_api_response(
+        sample_size=args.sample,
+        fraud_ratio=args.fraud_ratio,
+        n_fraud=args.n_fraud,
+    )
     print(json.dumps(resp["stats"], indent=2))
     print(f"\nGraph: {len(resp['nodes'])} nodes, {len(resp['edges'])} edges")
     return 0

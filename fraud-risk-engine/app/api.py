@@ -412,13 +412,23 @@ def register_routes(app: FastAPI, settings: Settings) -> None:
     def bankfraud_sample(
         sample_size: int = Query(default=300, ge=50, le=500),
         fraud_ratio: float = Query(default=0.5, ge=0.1, le=0.9),
+        n_fraud: int | None = Query(
+            default=None, ge=0, le=218,
+            description="Absolute count of fraud nodes; overrides fraud_ratio",
+        ),
     ) -> dict[str, Any]:
         """Serve the real Banking Fraud dataset (from local xlsx cache).
 
         - sample_size: max graph nodes (default 300)
-        - fraud_ratio: fraction of fraud nodes in the sample (default 0.5)
+        - fraud_ratio: fraction of fraud nodes in the sample (default 0.5);
+          ignored when ``n_fraud`` is provided
+        - n_fraud: explicit fraud-node count, clamped to available fraud rows
         """
-        return bankfraud_build(sample_size=sample_size, fraud_ratio=fraud_ratio)
+        return bankfraud_build(
+            sample_size=sample_size,
+            fraud_ratio=fraud_ratio,
+            n_fraud=n_fraud,
+        )
 
     # ------------------------------------------------------------------
     # MedGraph — Synthea-style patient health graph

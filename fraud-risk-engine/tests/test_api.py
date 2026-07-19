@@ -246,3 +246,65 @@ def test_robustness_endpoint_surfaces_low_connectivity_alert(monkeypatch) -> Non
         assert body["alert"] is not None
         assert body["alert"]["kind"] == "graph_robustness_low_connectivity"
         assert body["alert"]["evidence"]["edge_connectivity"] == 1
+
+
+def test_bankfraud_sample_n_fraud_override() -> None:
+    """When n_fraud is supplied, the endpoint must return exactly that many fraud
+    nodes and ignore the fraud_ratio default.
+    """
+    with _client() as c:
+        r = c.get(
+            "/api/bankfraud/sample",
+            params={"sample_size": 100, "fraud_ratio": 0.1, "n_fraud": 17},
+        )
+        assert r.status_code == 200, f"got {r.status_code}: {r.text}"
+        body = r.json()
+        fraud_nodes = [n for n in body["nodes"] if n["is_fraud"] == 1]
+        assert len(fraud_nodes) == 17, (
+            f"expected 17 fraud nodes, got {len(fraud_nodes)}: "
+            f"{[n['id'] for n in fraud_nodes]}"
+        )
+        # fraud_ratio=0.1 would yield ~10; n_fraud=17 must clearly win
+        assert len(fraud_nodes) > 10
+
+
+def test_bankfraud_sample_n_fraud_zero_caps_fraud_nodes() -> None:
+    """n_fraud=0 must produce a graph with no fraud nodes."""
+    with _client() as c:
+        r = c.get(
+            "/api/bankfraud/sample",
+            params={"sample_size": 80, "n_fraud": 0},
+        )
+        assert r.status_code == 200, f"got {r.status_code}: {r.text}"
+        body = r.json()
+        fraud_nodes = [n for n in body["nodes"] if n["is_fraud"] == 1]
+        assert fraud_nodes == []
+
+
+def test_bankfraud_sample_n_fraud_clamps_to_available() -> None:
+    """n_fraud larger than the source's fraud pool must clamp without error."""
+    with _client() as c:
+        r = c.get(
+            "/api/bankfraud/sample",
+            params={"sample_size": 500, "n_fraud": 218},
+        )
+        assert r.status_code == 200, f"got {r.status_code}: {r.text}"
+        body = r.json()
+        fraud_nodes = [n for n in body["nodes"] if n["is_fraud"] == 1]
+        # Cache has 218 fraud rows; n_fraud=218 must hit the cap exactly
+        assert len(fraud_nodes) == 218
+
+
+def test_bankfraud_sample_default_unchanged_when_no_n_fraud() -> None:
+    """Without n_fraud, the contract is preserved: fraud follows the ratio."""
+    with _client() as c:
+        r = c.get(
+            "/api/bankfraud/sample",
+            params={"sample_size": 100, "fraud_ratio": 0.4},
+        )
+        assert r.status_code == 200, f"got {r.status_code}: {r.text}"
+        body = r.json()
+        fraud_nodes = [n for n in body["nodes"] if n["is_fraud"] == 1]
+        assert len(fraud_nodes) == 40, (
+            f"expected 40 fraud nodes at 0.4 ratio, got {len(fraud_nodes)}"
+        )
