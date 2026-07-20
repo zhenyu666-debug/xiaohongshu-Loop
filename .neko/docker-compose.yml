@@ -1,0 +1,40 @@
+# neko shared-room: streamed Chromium pointing at the React frontend.
+# Windows host: vite on :5173, backend on :8888.
+# Chromium is launched with start_url = http://host.docker.internal:5173, so when the
+# friend opens the room they land straight on the React UI. host.docker.internal resolves
+# to the WSL2 host's eth0, which from a Windows-machine Docker-Desktop setup is the host.
+
+services:
+  neko-chromium:
+    image: ghcr.io/m1k1o/neko/chromium:latest
+    restart: unless-stopped
+    shm_size: "2gb"
+    ports:
+      - "8080:8080"            # neko web UI + WebRTC signaling
+      - "52000-52100:52000-52100/udp"   # WebRTC media
+      - "59000:59000/tcp"      # WebRTC TCP mux fallback (for serveo etc.)
+    environment:
+      NEKO_DESKTOP_SCREEN: "1280x720@30"
+      # Chromium open this when room starts:
+      NEKO_CHROMIUM_AUTOSTART_URL: "http://host.docker.internal:5173/"
+      # Auth: single admin and one member (the friend). Both passwords from .env.
+      NEKO_MEMBER_MULTIUSER_ADMIN_PASSWORD_FILE: /run/secrets/neko_admin_password
+      NEKO_MEMBER_MULTIUSER_USER_PASSWORD_FILE:  /run/secrets/neko_user_password
+      NEKO_WEBRTC_EPR: "52000-52100"
+      NEKO_WEBRTC_ICELITE: "1"
+      # Use TCP multiplexing on top of the SSH-tunneled port (serveo.net is TCP-only,
+      # but neko advertises a tcpmux port to fall back when UDP is blocked).
+      NEKO_WEBRTC_TCPMUX: "59000"
+      NEKO_WEBRTC_UDPMUX: ""
+    extra_hosts:
+      # Make sure the Chromium container can reach the host loopback.
+      - "host.docker.internal:host-gateway"
+    secrets:
+      - "neko_admin_password"
+      - "neko_user_password"
+
+secrets:
+  neko_admin_password:
+    file: ./passwords/admin_password
+  neko_user_password:
+    file: ./passwords/user_password

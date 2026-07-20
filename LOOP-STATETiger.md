@@ -332,6 +332,21 @@ DONE = three measurable things, all in one shell-verify-able command:
 - **Status**: neko + serveo + vite + backend + chromium → vite pipeline ALL green. Item 4 from next-steps (curl /api/health + friend view through serveo) is **done**. Items 5 (hand URL to friend) and 6 (resilient automation) remain.
 - **Commit**: `3e12dc2 fix(neko): vite allowedHosts=true so chromium container (host.docker.internal) is not 403'd` (root workspace). Push to origin/main deferred to a non-GFW window.
 
+### 2026-07-21 03:50 — supervisor + healthcheck scripts (closes item 6 from neko next-steps)
+- **`.neko/share-neko-supervisor.ps1`** (~7 KB): one-shot bring-up + watch loop. Brings up `docker compose -f .neko/docker-compose.yml up -d`, then `python -m uvicorn app:app --host 0.0.0.0 --port 8888` with `TG_HOST=127.0.0.1 TG_RESTPP_PORT=19999` (so the healthcheck TG ping fails fast in ~1s instead of blocking 14s), then `vite.cmd --host 0.0.0.0 --port 5173`, then the serveo SSH tunnel with PTY capture → `current_url.txt`. Then enters a 10s-interval watch loop that re-checks each child and restarts anything that died. Writes the share URL + admin/user passwords + timestamp to `supervisor_state.json`. Ctrl-C to stop; children intentionally stay up.
+- **`.neko/healthcheck.ps1`** (~3 KB): one-shot probe. Returns a JSON snapshot of `{neko, backend, frontend, serveo:{tunnels, share_url}, ok}`. Exits 1 on degraded. Writes same JSON to `supervisor_state.json`. Designed to be wired into Uptime Kuma / cron / alert webhooks.
+- **`.gitignore`**: added `.neko/logs/`, `supervisor_state.json`, `current_url.txt`, and both password files (so the runtime-generated creds never get committed). Scripts + compose + README + setup-secrets remain tracked.
+- **Smoke (verified)**:
+  - `healthcheck.ps1` → `ok: true`, neko Up 4h healthy, backend 200 (235 B, 11s latency), frontend 200 (616 B, 2s), serveo 1 tunnel (PID 15468 → 5.255.123.12:22), share_url captured
+  - supervisor first run → detected neko+backend+vite already up, reused serveo URL, printed credentials, entered WATCH mode
+  - supervisor WATCH mode → detected backend death at 03:47:41 (something in the previous session's API call must've wedged uvicorn again), killed stale process, restarted, healthy at 03:48:17
+  - After supervisor exit, healthcheck still reports `ok: true` (children stay up by design)
+- **Cosmetic fix**: `$proc.Id` (a Process object's stringification in Log string) was rendering as `System.Diagnostics.Process (python).Id` in the log. Fixed by casting to `[int]$proc.Id` before formatting.
+- **Files**:
+  - New: `.neko/share-neko-supervisor.ps1`, `.neko/healthcheck.ps1`
+  - Modified: `.neko/README.md` (added supervisor/healthcheck sections + vite allowedHosts note + TG_HOST override note), `.gitignore` (neko runtime state)
+- **Status**: items 1-6 from the Neko thread next-steps queue are now all done. The only remaining "open question" is the WebRTC streaming gap (NM-11) — but that's an architectural blocker (serveo is TCP-only, friend can't establish UDP for WebRTC media) and is a known limitation, not a TODO.
+
 
 
 

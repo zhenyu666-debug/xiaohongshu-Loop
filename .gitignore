@@ -199,3 +199,11 @@ tmp_restore/
 # legacy zhilian Java module: only build/ logs/ data/ target/ runtime leftovers
 # remain (sources were moved to liepin/). Keep on disk, don't track.
 zhilian/
+
+# ===== Neko shared room runtime state =====
+# Scripts + compose + passwords dir + README are tracked; runtime state below is not.
+.neko/logs/
+.neko/supervisor_state.json
+.neko/current_url.txt
+.neko/passwords/admin_password
+.neko/passwords/user_password
