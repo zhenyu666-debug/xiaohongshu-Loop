@@ -55,8 +55,19 @@ from .detection.local_detector import (
     run_local_detector,
     snapshot_from_dataset,
 )
-from .detection.models import DetectionRun
+from .detection.funds_local import (
+    find_burst_amount as funds_burst,
+    find_circular_funds as funds_circles,
+    trace_funds_paths as funds_paths,
+)
+from .detection.models import (
+    DetectionRun,
+    burst_amount_alert_from_gsql,
+    circular_funds_alert_from_gsql,
+    funds_path_trace_alert_from_gsql,
+)
 from .detection.tg_detector import TigerGraphDetector, run_remote_detector
+from .scheduler.funds_monitor import FundsMonitor, get_monitor
 from .eval.graph_robustness import (
     RobustnessReport,
     compute_robustness,
@@ -314,6 +325,114 @@ def register_routes(app: FastAPI, settings: Settings) -> None:
             "report": report.to_dict(),
             "alert": alert.to_dict() if alert is not None else None,
         }
+
+    # ------------------------------------------------------------------
+    # Funds-flow endpoints — Cypher-style detectors
+    #   * /api/funds/path     — multi-hop path trace from a seed account
+    #   * /api/funds/circles  — 3..6-hop circular funds rings
+    #   * /api/funds/burst    — edge.amount > N × source-account-avg
+    #   * /api/funds/monitor  — read / start / stop the APScheduler job
+    # ------------------------------------------------------------------
+
+    @app.get("/api/funds/path")
+    def funds_path_endpoint(
+        start_id: str = Query(..., description="Seed account id, e.g. 'A000123'"),
+        start_ts: str = Query(
+            "1970-01-01T00:00:00Z",
+            description="ISO timestamp lower bound",
+        ),
+        max_hops: int = Query(5, ge=1, le=8),
+        max_paths: int = Query(200, ge=1, le=2000),
+    ) -> dict[str, Any]:
+        ds: GeneratedDataset | None = STATE.get("latest_dataset")
+        if ds is None:
+            raise HTTPException(
+                status_code=400,
+                detail="no dataset — POST /api/dataset first",
+            )
+        result = funds_paths(
+            ds,
+            start_id=start_id,
+            start_ts=start_ts,
+            max_hops=max_hops,
+            max_paths=max_paths,
+        )
+        alert = funds_path_trace_alert_from_gsql(result)
+        return {
+            "ok": True,
+            "result": result,
+            "alert": alert.to_dict() if alert else None,
+        }
+
+    @app.get("/api/funds/circles")
+    def funds_circles_endpoint(
+        min_total: float = Query(50000.0, ge=0.0),
+        max_hops: int = Query(6, ge=3, le=8),
+        min_hops: int = Query(3, ge=3, le=8),
+    ) -> dict[str, Any]:
+        ds: GeneratedDataset | None = STATE.get("latest_dataset")
+        if ds is None:
+            raise HTTPException(
+                status_code=400,
+                detail="no dataset — POST /api/dataset first",
+            )
+        result = funds_circles(
+            ds, min_total=min_total, max_hops=max_hops, min_hops=min_hops
+        )
+        alert = circular_funds_alert_from_gsql(result)
+        return {
+            "ok": True,
+            "result": result,
+            "alert": alert.to_dict() if alert else None,
+        }
+
+    @app.get("/api/funds/burst")
+    def funds_burst_endpoint(
+        burst_factor: float = Query(5.0, ge=1.0),
+        start_ts: str = Query("1970-01-01T00:00:00Z"),
+    ) -> dict[str, Any]:
+        ds: GeneratedDataset | None = STATE.get("latest_dataset")
+        if ds is None:
+            raise HTTPException(
+                status_code=400,
+                detail="no dataset — POST /api/dataset first",
+            )
+        result = funds_burst(ds, burst_factor=burst_factor, start_ts=start_ts)
+        alert = burst_amount_alert_from_gsql(result)
+        return {
+            "ok": True,
+            "result": result,
+            "alert": alert.to_dict() if alert else None,
+        }
+
+    @app.post("/api/funds/monitor/start")
+    def funds_monitor_start(
+        interval_minutes: int = Query(60, ge=1, le=24 * 60),
+        webhook_url: str | None = Query(None),
+        webhook_token: str | None = Query(None),
+        dry_run: bool = Query(True),
+        dataset_seed: int | None = Query(None, description="Optional seed rebuild"),
+    ) -> dict[str, Any]:
+        monitor: FundsMonitor = get_monitor()
+        ok = monitor.start(
+            interval_minutes=interval_minutes,
+            webhook_url=webhook_url,
+            webhook_token=webhook_token,
+            dry_run=dry_run,
+            dataset_seed=dataset_seed,
+        )
+        return {"ok": ok, "monitor": monitor.status()}
+
+    @app.post("/api/funds/monitor/stop")
+    def funds_monitor_stop() -> dict[str, Any]:
+        monitor: FundsMonitor = get_monitor()
+        monitor.stop()
+        return {"ok": True, "monitor": monitor.status()}
+
+    @app.get("/api/funds/monitor")
+    def funds_monitor_status() -> dict[str, Any]:
+        monitor: FundsMonitor = get_monitor()
+        return monitor.status()
 
     # ------------------------------------------------------------------
     # Profile — multi-hop BFS

@@ -84,6 +84,14 @@ class AlertKind(str, Enum):
     # ── Graph robustness (TIGER port) ─────────────────────────────────────
     ROBUSTNESS_LOW_CONNECTIVITY = "graph_robustness_low_connectivity"
     ROBUSTNESS_DENSE = "graph_robustness_dense"
+    # ── Funds-flow detectors (Cypher → GSQL port) ─────────────────────────
+    # Ported from the three Cypher statements provided by ops/analysts:
+    #   - funds_path_trace       — multi-hop smurfing path analysis (1..5 hops)
+    #   - circular_funds_rings   — 3..6-hop circular laundering
+    #   - burst_amount           — edge.amount > N × avg of same src account
+    FUNDS_PATH_TRACE = "funds_path_trace"
+    CIRCULAR_FUNDS = "circular_funds_rings"
+    BURST_AMOUNT = "burst_amount"
 
 
 @dataclass
@@ -1129,5 +1137,183 @@ def robustness_alert_from_report(
                 "low_connectivity_threshold": low_connectivity_threshold,
                 "dense_density_threshold": dense_density_threshold,
             },
+        },
+    )
+
+
+# ---------------------------------------------------------------------------
+# Funds-flow alert factories (Cypher → GSQL port)
+#
+# These three factories build a :class:`RiskAlert` from the result of the
+# corresponding GSQL query in :mod:`app.queries.funds_queries`. They share a
+# uniform return shape (``{"results": [<payload>]}``) with their local
+# pure-Python counterparts in :mod:`app.detection.funds_local`, so the
+# factory is backend-agnostic.
+# ---------------------------------------------------------------------------
+
+
+def funds_path_trace_alert_from_gsql(result: dict) -> "RiskAlert | None":
+    """Multi-hop funds-path trace factory.
+
+    GSQL output shape::
+
+        {"results": [{
+            "paths": [{"source": ..., "target": ..., "pathNodes": [...],
+                       "totalAmount": ...}, ...],
+            "path_count": int,
+            "max_amount": float,
+            "seed_id": str,
+        }]}
+    """
+    if not isinstance(result, dict):
+        return None
+    res = result.get("results") or []
+    if not isinstance(res, list) or not res:
+        return None
+    payload = res[0] if isinstance(res[0], dict) else {}
+    paths = payload.get("paths") or []
+    path_count = payload.get("path_count") or 0
+    seed_id = payload.get("seed_id", "")
+    max_amount = payload.get("max_amount") or 0.0
+    if path_count <= 0 or not paths:
+        return None
+    involved: list[str] = []
+    for p in paths[:30]:
+        for v in p.get("pathNodes", []) if isinstance(p, dict) else []:
+            if v not in involved:
+                involved.append(v)
+    top_paths = sorted(paths, key=lambda p: p.get("totalAmount", 0.0), reverse=True)[:5]
+    severity = (
+        AlertSeverity.CRITICAL.value
+        if max_amount >= 1_000_000
+        else AlertSeverity.HIGH.value
+        if max_amount >= 100_000
+        else AlertSeverity.MEDIUM.value
+    )
+    return RiskAlert(
+        kind=AlertKind.FUNDS_PATH_TRACE.value,
+        severity=severity,
+        score=round(min(1.0, 0.4 + 0.05 * min(path_count, 12)), 4),
+        title=f"Multi-hop funds-path trace ({len(paths)} path(s) from {seed_id or 'seed'})",
+        description=(
+            f"Bounded DFS to {len(paths)} path(s) starting at "
+            f"account '{seed_id or '?'}'; deepest chain has "
+            f"{max((p.get('edge_count', 0) for p in paths), default=0)} edges; "
+            f"max cumulative amount {max_amount:,.2f}."
+        ),
+        involved=involved[:30],
+        evidence={
+            "seed_id": seed_id,
+            "path_count": path_count,
+            "max_amount": max_amount,
+            "top_paths": top_paths,
+            "max_hops": payload.get("max_hops"),
+        },
+    )
+
+
+def circular_funds_alert_from_gsql(result: dict) -> "RiskAlert | None":
+    """Circular funds 3..6 hop rings factory.
+
+    GSQL output shape::
+
+        {"results": [{
+            "totalAmount": float,
+            "ringCount": int,
+            "accountIds": [...],
+            "byAccount": {account: {"ring_len_count": int, "totalAmount": float}},
+        }]}
+    """
+    if not isinstance(result, dict):
+        return None
+    res = result.get("results") or []
+    if not isinstance(res, list) or not res:
+        return None
+    payload = res[0] if isinstance(res[0], dict) else {}
+    ring_count = int(payload.get("ringCount", 0))
+    total_amount = float(payload.get("totalAmount", 0.0))
+    involved = payload.get("accountIds") or []
+    if ring_count <= 0 or not involved:
+        return None
+    severity = (
+        AlertSeverity.CRITICAL.value
+        if total_amount >= 1_000_000
+        else AlertSeverity.HIGH.value
+        if total_amount >= 100_000
+        else AlertSeverity.MEDIUM.value
+    )
+    return RiskAlert(
+        kind=AlertKind.CIRCULAR_FUNDS.value,
+        severity=severity,
+        score=round(min(1.0, 0.5 + 0.05 * min(ring_count, 10)), 4),
+        title=f"Circular funds rings ({ring_count} 3..6-hop cycles)",
+        description=(
+            f"Detected {ring_count} laundering-style loop(s) of 3..6 hops "
+            f"moving a cumulative {total_amount:,.2f} units across "
+            f"{len(involved)} distinct accounts. Classic 'round-trip' / "
+            f"smurfing signature."
+        ),
+        involved=involved[:30],
+        evidence={
+            "ring_count": ring_count,
+            "total_amount": total_amount,
+            "by_account": payload.get("byAccount") or {},
+            "min_total": payload.get("min_total"),
+            "max_hops": payload.get("max_hops"),
+        },
+    )
+
+
+def burst_amount_alert_from_gsql(result: dict) -> "RiskAlert | None":
+    """Burst-amount detection factory (edge > N × avg of src account).
+
+    GSQL output shape::
+
+        {"results": [{
+            "suspicious": [{"suspiciousSource": ..., "suspiciousTarget": ...,
+                            "transferAmount": ..., "historicalAverage": ...,
+                            "ratio": ...}, ...],
+            "flagged_count": int,
+            "burst_factor": float,
+        }]}
+    """
+    if not isinstance(result, dict):
+        return None
+    res = result.get("results") or []
+    if not isinstance(res, list) or not res:
+        return None
+    payload = res[0] if isinstance(res[0], dict) else {}
+    suspicious = payload.get("suspicious") or []
+    flagged = int(payload.get("flagged_count", 0))
+    burst_factor = float(payload.get("burst_factor", 5.0))
+    if flagged <= 0:
+        return None
+    sources = sorted({row.get("suspiciousSource") for row in suspicious if isinstance(row, dict)})
+    max_ratio = max((row.get("ratio", 0.0) for row in suspicious if isinstance(row, dict)), default=0.0)
+    severity = (
+        AlertSeverity.CRITICAL.value
+        if flagged >= 50
+        else AlertSeverity.HIGH.value
+        if flagged >= 10 or max_ratio >= 50
+        else AlertSeverity.MEDIUM.value
+    )
+    return RiskAlert(
+        kind=AlertKind.BURST_AMOUNT.value,
+        severity=severity,
+        score=round(min(1.0, 0.5 + 0.01 * flagged), 4),
+        title=(
+            f"Burst-amount transfers ({flagged} edge(s) > {burst_factor:g}× avg)"
+        ),
+        description=(
+            f"{flagged} edge(s) exceeded the source account's historical "
+            f"average by ≥{burst_factor:g}×. Top ratio = {max_ratio:.2f}×; "
+            f"{len(sources)} suspicious source account(s) identified."
+        ),
+        involved=sources[:30],
+        evidence={
+            "flagged_count": flagged,
+            "burst_factor": burst_factor,
+            "top_ratio": max_ratio,
+            "top_offenders": suspicious[:10],
         },
     )

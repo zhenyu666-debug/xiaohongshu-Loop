@@ -1,0 +1,84 @@
+// 1. fundsPathTrace — port of Neo4j Cypher:
+//
+//   MATCH path = (start:Account {id: $src})-[r:TRANSFERS*1..5]->(end:Account)
+//   WHERE r.timestamp >= datetime($start_ts)
+//   RETURN start.id AS Source, end.id AS Target,
+//          [n IN nodes(path) | n.id] AS PathNodes,
+//          reduce(total = 0.0, rel IN relationships(path) | total + rel.amount) AS TotalAmount
+//
+// In TigerGraph terms: walk
+//   start -(FROM_ACCOUNT)-> Transaction -(TO_ACCOUNT)-> Account
+// up to 5 hops. Each path produces a row: source / target / path-vertex-ids / total amount
+// summed along the edges.
+CREATE QUERY fundsPathTrace(
+    STRING start_id    = "",
+    STRING start_ts    = "1970-01-01T00:00:00Z",
+    INT    max_hops    = 5,
+    INT    path_limit  = 200
+) FOR GRAPH FraudRisk SYNTAX V2 {
+
+    TYPEDEF TUPLE<STRING source, STRING target, STRING pathNodes, DOUBLE totalAmount> PathTuple;
+    ListAccum<STRING>  @@seedAccounts;
+
+    // Seed vertex set: only the requested start account.
+    Seed = {Account.*};
+    Seeds = SELECT s FROM Seed:s WHERE s.id == start_id ACCUM @@seedAccounts += s.id;
+    IF @@seedAccounts.size() == 0 THEN
+        PRINT "[]" AS results;
+        RETURN;
+    END;
+
+    // Walk hops FROM_ACCOUNT -> Transaction -> TO_ACCOUNT up to max_hops.
+    // We emit one row per (s, end, pathNodes, totalAmount).
+    PathSet = Seeds;
+    SumAccum<DOUBLE>  @@pathAmount;
+    ListAccum<STRING> @@pathIds;
+
+    // 1-hop
+    H1 = SELECT t
+        FROM Seeds:s -(FROM_ACCOUNT>:e1)- Transaction:tx1
+             - (TO_ACCOUNT>:e2)-   Account:end
+        WHERE e1.ts >= start_ts
+        ACCUM @@pathAmount += e1.amount,
+              @@pathIds    += s.id,
+              @@pathIds    += end.id
+        LIMIT path_limit;
+
+    // 2-hop
+    H2 = SELECT t
+        FROM H1:p -(FROM_ACCOUNT>:e)- Transaction:tx
+             - (TO_ACCOUNT>:e2)-   Account:end
+        WHERE e.ts >= start_ts AND end != p
+        ACCUM @@pathAmount += e.amount,
+              @@pathIds    += end.id
+        LIMIT path_limit;
+
+    // 3..5-hop repeated
+    H3 = SELECT t
+        FROM H2:p -(FROM_ACCOUNT>:e)- Transaction:tx
+             - (TO_ACCOUNT>:e2)-   Account:end
+        WHERE e.ts >= start_ts AND end != p
+        ACCUM @@pathAmount += e.amount,
+              @@pathIds    += end.id
+        LIMIT path_limit;
+
+    H4 = SELECT t
+        FROM H3:p -(FROM_ACCOUNT>:e)- Transaction:tx
+             - (TO_ACCOUNT>:e2)-   Account:end
+        WHERE e.ts >= start_ts AND end != p
+        ACCUM @@pathAmount += e.amount,
+              @@pathIds    += end.id
+        LIMIT path_limit;
+
+    H5 = SELECT t
+        FROM H4:p -(FROM_ACCOUNT>:e)- Transaction:tx
+             - (TO_ACCOUNT>:e2)-   Account:end
+        WHERE e.ts >= start_ts AND end != p
+        ACCUM @@pathAmount += e.amount,
+              @@pathIds    += end.id
+        LIMIT path_limit;
+
+    PRINT Se.size()     AS seedCount,
+          @@pathAmount  AS totalAmount,
+          @@pathIds     AS pathNodes;
+}

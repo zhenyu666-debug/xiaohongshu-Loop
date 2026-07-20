@@ -1,0 +1,84 @@
+// 2. circularFunds — port of Neo4j Cypher:
+//
+//   MATCH path = (a:Account)-[r:TRANSFERS*3..6]->(a)
+//   UNWIND relationships(path) AS rel
+//   WITH a, sum(rel.amount) AS totalAmount, count(rel) AS pathLength
+//   WHERE totalAmount > 50000.0
+//   RETURN a.id AS CircularAccount, totalAmount, pathLength
+//
+// TigerGraph equivalent: walk 3..6 hop cycles
+//   a1 -(FROM_ACCOUNT)-> t1 -(TO_ACCOUNT)-> a2 -(FROM_ACCOUNT)-> t2 -(TO_ACCOUNT)-> ...
+//   and require a1 == a5 (or a6/a7) at the close.
+// Detects the classic 3..6 hop "smurfing/loop" laundering pattern: money goes out and
+// eventually cycles back to the source account.
+CREATE QUERY circularFunds(
+    DOUBLE min_total = 50000.0,
+    INT    max_hops  = 6
+) FOR GRAPH FraudRisk SYNTAX V2 {
+
+    SumAccum<DOUBLE> @@ringTotal;
+    SetAccum<STRING> @@ringAccounts;
+    SumAccum<INT>    @@ringCount;
+
+    // 3-hop rings: a -> b -> c -> a
+    Ring3 = SELECT a3
+        FROM Account:a1 -(FROM_ACCOUNT>:e1)- Transaction:t1
+              -(TO_ACCOUNT>:e2)-   Account:a2
+              -(FROM_ACCOUNT>:e3)- Transaction:t2
+              -(TO_ACCOUNT>:e4)-   Account:a3
+        WHERE a1 == a3 AND a1 != a2
+        ACCUM @@ringTotal   += e1.amount + e3.amount,
+              @@ringCount   += 1,
+              @@ringAccounts += a1.id,
+              @@ringAccounts += a2.id;
+
+    // 4-hop rings: a -> b -> c -> d -> a
+    Ring4 = SELECT a4
+        FROM Account:a1 -(FROM_ACCOUNT>:e1)- Transaction:t1
+              -(TO_ACCOUNT>:e2)-   Account:a2
+              -(FROM_ACCOUNT>:e3)- Transaction:t2
+              -(TO_ACCOUNT>:e4)-   Account:a3
+              -(FROM_ACCOUNT>:e5)- Transaction:t3
+              -(TO_ACCOUNT>:e6)-   Account:a4
+        WHERE a1 == a4 AND a1 != a2 AND a1 != a3
+        ACCUM @@ringTotal   += e1.amount + e3.amount + e5.amount,
+              @@ringCount   += 1,
+              @@ringAccounts += a1.id,
+              @@ringAccounts += a2.id,
+              @@ringAccounts += a3.id;
+
+    // 5-hop rings: a -> b -> c -> d -> e -> a
+    Ring5 = SELECT a5
+        FROM Account:a1 -(FROM_ACCOUNT>:e1)- Transaction:t1
+              -(TO_ACCOUNT>:e2)-   Account:a2
+              -(FROM_ACCOUNT>:e3)- Transaction:t2
+              -(TO_ACCOUNT>:e4)-   Account:a3
+              -(FROM_ACCOUNT>:e5)- Transaction:t3
+              -(TO_ACCOUNT>:e6)-   Account:a4
+              -(FROM_ACCOUNT>:e7)- Transaction:t4
+              -(TO_ACCOUNT>:e8)-   Account:a5
+        WHERE a1 == a5 AND a1 != a2 AND a1 != a3 AND a1 != a4
+        ACCUM @@ringTotal   += e1.amount + e3.amount + e5.amount + e7.amount,
+              @@ringCount   += 1;
+
+    // 6-hop rings: a -> b -> c -> d -> e -> f -> a
+    Ring6 = SELECT a6
+        FROM Account:a1 -(FROM_ACCOUNT>:e1)- Transaction:t1
+              -(TO_ACCOUNT>:e2)-   Account:a2
+              -(FROM_ACCOUNT>:e3)- Transaction:t2
+              -(TO_ACCOUNT>:e4)-   Account:a3
+              -(FROM_ACCOUNT>:e5)- Transaction:t3
+              -(TO_ACCOUNT>:e6)-   Account:a4
+              -(FROM_ACCOUNT>:e7)- Transaction:t4
+              -(TO_ACCOUNT>:e8)-   Account:a5
+              -(FROM_ACCOUNT>:e9)- Transaction:t5
+              -(TO_ACCOUNT>:e10)-  Account:a6
+        WHERE a1 == a6
+          AND a1 != a2 AND a1 != a3 AND a1 != a4 AND a1 != a5
+        ACCUM @@ringTotal   += e1.amount + e3.amount + e5.amount + e7.amount + e9.amount,
+              @@ringCount   += 1;
+
+    PRINT @@ringTotal   AS totalAmount,
+          @@ringCount   AS ringCount,
+          @@ringAccounts AS accountIds;
+}

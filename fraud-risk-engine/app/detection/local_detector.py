@@ -31,7 +31,15 @@ from .models import (
     DetectionRun,
     GraphSnapshot,
     RiskAlert,
+    burst_amount_alert_from_gsql,
+    circular_funds_alert_from_gsql,
+    funds_path_trace_alert_from_gsql,
     robustness_alert_from_report,
+)
+from .funds_local import (
+    find_burst_amount,
+    find_circular_funds,
+    trace_funds_paths,
 )
 
 
@@ -263,6 +271,47 @@ def run_local_detector(
     robustness_alert = robustness_alert_from_report(compute_robustness(ds))
     if robustness_alert:
         alerts.append(robustness_alert)
+
+    # ── Funds-flow detectors (Cypher → GSQL port) ─────────────────────────
+    # 3 detectors: path-trace, circular-funds, burst-amount. Each runs against
+    # the in-memory GeneratedDataset so it works in local / demo-without-graph
+    # mode as well as TigerGraph (see tg_detector.run()).
+    # NB: the synthetic planted rings have small cumulative amount (~1–3k),
+    # so we lower the local fallback threshold from the production 50 000 to
+    # 1 000 — otherwise it would always return None against pure-synth data.
+    try:
+        circles = find_circular_funds(ds, min_total=1000.0, max_hops=6, min_hops=3)
+        cf = circular_funds_alert_from_gsql(circles)
+        if cf:
+            alerts.append(cf)
+    except Exception:  # pragma: no cover — defensive
+        pass      
+    try:
+        bursts = find_burst_amount(ds, burst_factor=5.0)
+        ba = burst_amount_alert_from_gsql(bursts)
+        if ba:
+            alerts.append(ba)
+    except Exception:  # pragma: no cover — defensive
+        pass
+    # Path-trace requires a seed account; default to the highest-degree one.
+    try:
+        fwd: dict[str, list] = defaultdict(list)
+        for fa, ta in zip(ds.from_account, ds.to_account):
+            pass
+        # Build a simple in/out-degree counter for seed selection.
+        degree: dict[str, int] = defaultdict(int)
+        for row in ds.from_account:
+            degree[row["to_id"]] += 1
+        for row in ds.to_account:
+            degree[row["to_id"]] += 1
+        if degree:
+            seed = max(degree.items(), key=lambda kv: kv[1])[0]
+            paths = trace_funds_paths(ds, start_id=seed, max_hops=5, max_paths=200)
+            pt = funds_path_trace_alert_from_gsql(paths)
+            if pt:
+                alerts.append(pt)
+    except Exception:  # pragma: no cover — defensive
+        pass
 
     elapsed_ms = int((time.perf_counter() - t0) * 1000)
     ended = _now()

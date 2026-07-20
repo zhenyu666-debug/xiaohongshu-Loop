@@ -21,7 +21,10 @@ from ..config import Settings, get_settings
 from ..queries import (
     GSQL_BETWEENNESS,
     GSQL_BURST_TRANSACTIONS,
+    GSQL_BURST_AMOUNT,
+    GSQL_CIRCULAR_FUNDS,
     GSQL_CLOSENESS,
+    GSQL_FUNDS_PATH_TRACE,
     GSQL_JACCARD,
     GSQL_LPCC,
     GSQL_PAGERANK_ACCOUNTS,
@@ -140,7 +143,11 @@ def install_queries(settings: Settings | None = None) -> LoaderResult:
         GSQL_JACCARD,
         GSQL_BETWEENNESS,
         GSQL_CLOSENESS,
-    ]
+        # Funds-flow detectors (Cypher → GSQL port)
+        GSQL_FUNDS_PATH_TRACE,
+        GSQL_CIRCULAR_FUNDS,
+        GSQL_BURST_AMOUNT,
+    ]      
     results: list[dict] = []
     try:
         with httpx.Client() as client:

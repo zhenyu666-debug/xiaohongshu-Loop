@@ -18,11 +18,24 @@ import httpx
 
 from ..config import Settings, get_settings
 from ..queries import gdsl as _gdsl
+from ..queries.funds_queries import (
+    GSQL_BURST_AMOUNT,
+    GSQL_CIRCULAR_FUNDS,
+    GSQL_FUNDS_PATH_TRACE,
+)
 from .local_detector import snapshot_from_dataset
+from .funds_local import (
+    find_burst_amount,
+    find_circular_funds,
+    trace_funds_paths,
+)
 from .models import (
     DetectionRun,
     GraphSnapshot,
     RiskAlert,
+    burst_amount_alert_from_gsql,
+    circular_funds_alert_from_gsql,
+    funds_path_trace_alert_from_gsql,
     adamic_adar_alert_from_gsql,
     article_rank_alert_from_gsql,
     astar_alert_from_gsql,
@@ -564,6 +577,46 @@ class TigerGraphDetector:
                     if a: alerts.append(a)
                 except httpx.HTTPError as exc:
                     detail_parts.append(f"tg_fastRP={exc}")
+
+                # ── Funds-flow detectors (Cypher → GSQL port) ─────────────
+                # The TG-side runs the GSQL strings in `app.queries.funds_queries`;
+                # the local fallback (see run_local_detector + funds_local) uses the
+                # pure-Python equivalent so the demo-without-graph mode keeps working
+                # when TigerGraph is unreachable.
+                try:
+                    res = _gdsl(
+                        client,
+                        "circularFunds",
+                        {"min_total": 50000.0, "max_hops": 6},
+                    )
+                    a = circular_funds_alert_from_gsql(res)
+                    if a: alerts.append(a)
+                except httpx.HTTPError as exc:
+                    detail_parts.append(f"circularFunds={exc}")
+
+                try:
+                    res = _gdsl(
+                        client,
+                        "burstAmount",
+                        {"start_ts": "1970-01-01T00:00:00Z", "burst_factor": 5.0, "edge_limit": 5000},
+                    )
+                    a = burst_amount_alert_from_gsql(res)
+                    if a: alerts.append(a)
+                except httpx.HTTPError as exc:
+                    detail_parts.append(f"burstAmount={exc}")
+
+                # Path trace needs a seed account. Pass empty string → GSQL falls
+                # through and returns an empty result without trashing the run.
+                try:
+                    res = _gdsl(
+                        client,
+                        "fundsPathTrace",
+                        {"start_id": "", "start_ts": "1970-01-01T00:00:00Z", "max_hops": 5, "path_limit": 200},
+                    )
+                    a = funds_path_trace_alert_from_gsql(res)
+                    if a: alerts.append(a)
+                except httpx.HTTPError as exc:
+                    detail_parts.append(f"fundsPathTrace={exc}")
 
         except Exception as exc:
             status = "degraded" if alerts else "unreachable"

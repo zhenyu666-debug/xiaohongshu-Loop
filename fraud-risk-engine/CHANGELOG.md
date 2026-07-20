@@ -1,5 +1,66 @@
 ﻿# CHANGELOG
 
+## 0.3.2 — 2026-07-20
+
+### Added
+
+- **Funds-flow detector suite** — three new analysis paths ported from
+  the operator-supplied Cypher statements into TigerGraph GSQL:
+  - `fundsPathTrace.gsql` — multi-hop smurfing path analysis
+    (1..5 hop walk from a seed account, summing the cumulative
+    amount along the chain).
+  - `circularFunds.gsql` — 3..6 hop circular laundering detection,
+    extending the existing 3-hop `transactionRings` query.
+  - `burstAmount.gsql` — per-source-account average vs every edge;
+    flags transfers that exceed `burst_factor × avg` (default 5×).
+- `app/queries/funds_queries.py` — exports the GSQL strings and a
+  loader that reads them from `app/queries/funds/*.gsql`.
+- `app/queries/__init__.py` — re-exports
+  `GSQL_FUNDS_PATH_TRACE`, `GSQL_CIRCULAR_FUNDS`, `GSQL_BURST_AMOUNT`.
+- `app/loader/tg_loader.py` — funds queries included in
+  `install_queries` so `/api/loader/run` ships them all in one shot.
+- `app/detection/funds_local.py` — pure-Python fallbacks for all
+  three funds-flow detectors. Mirrors the GSQL semantics against
+  `ds.from_account` / `ds.to_account` so the demo-without-graph
+  frontend mode and unit tests run without a TigerGraph instance.
+- `app/detection/models.py` —
+  - `AlertKind.FUNDS_PATH_TRACE`, `AlertKind.CIRCULAR_FUNDS`,
+    `AlertKind.BURST_AMOUNT`.
+  - Three factory functions:
+    `funds_path_trace_alert_from_gsql`,
+    `circular_funds_alert_from_gsql`,
+    `burst_amount_alert_from_gsql`.
+  - All factories guard `None` / empty / wrong-type inputs.
+- `app/detection/tg_detector.py` — wires the three new GSQL queries
+  into `TigerGraphDetector.run()` with the same `try / except` shape
+  as the existing 69 GDSL queries.
+- `app/detection/local_detector.py` — wires the local fallbacks into
+  `run_local_detector()`. Local threshold lowered to `min_total=1000`
+  to match the planted-ring amount distribution in the synthetic
+  dataset (production default stays at 50 000 — see API docs).
+- `app/api.py` — five new routes:
+  - `GET /api/funds/path?start_id=&start_ts=&max_hops=&max_paths=`
+  - `GET /api/funds/circles?min_total=&max_hops=&min_hops=`
+  - `GET /api/funds/burst?burst_factor=&start_ts=`
+  - `POST /api/funds/monitor/start` — kicks off the APScheduler-free
+    background monitor with `interval_minutes`, optional `webhook_url`,
+    `webhook_token`, and `dry_run` flag.
+  - `POST /api/funds/monitor/stop` and `GET /api/funds/monitor`
+    for runtime control.
+- `app/scheduler/funds_monitor.py` — lightweight, dependency-free
+  background-thread job (no APScheduler needed): every `interval_minutes`
+  re-runs the three detectors over a freshly-built synthetic dataset
+  (or a user-supplied seed), packs the resulting alerts into a single
+  webhook payload, and POSTs it to the configured URL. Supports
+  bearer-token auth and a `dry_run` mode for offline testing.
+
+### Tests
+
+- `tests/test_funds.py` — 10 tests (3 factory × 3 detectors + 1 e2e).
+- `tests/test_funds_monitor.py` — 5 tests covering singleton,
+  start/stop lifecycle, factory tolerance, and one-shot pipeline.
+- 147/147 green (was 132 → +15).
+
 ## 0.3.1 — 2026-07-19
 
 ### Added

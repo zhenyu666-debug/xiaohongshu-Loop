@@ -1,0 +1,42 @@
+// 3. burstAmount — port of Neo4j Cypher:
+//
+//   MATCH (src:Account)-[r:TRANSFERS]->(target:Account)
+//   WHERE r.timestamp >= datetime($ts)
+//   WITH src, avg(r.amount) AS avgAmount, max(r.amount) AS maxAmount, collect(r) AS transfers
+//   UNWIND transfers AS t
+//   WHERE t.amount > (avgAmount * 5)
+//   RETURN src.id AS SuspiciousSource, target.id AS SuspiciousTarget,
+//          t.amount AS TransferAmount, avgAmount AS HistoricalAverage
+//
+// TigerGraph equivalent: per source account, compute the avg outgoing amount
+// over the recent window; emit any outgoing edge whose amount exceeds
+// burst_factor × average. Uses an AvgAccum per source vertex.
+CREATE QUERY burstAmount(
+    STRING start_ts   = "1970-01-01T00:00:00Z",
+    DOUBLE burst_factor = 5.0,
+    INT    edge_limit   = 5000
+) FOR GRAPH FraudRisk SYNTAX V2 {
+
+    AvgAccum         @@avgByAccount KEY="STRING";
+    MapAccum<STRING, SumAccum<DOUBLE>> @@outTotal;
+    MapAccum<STRING, SumAccum<INT>>    @@outCount;
+
+    // Pre-aggregate per source (FROM_ACCOUNT edge -> src is the Transaction,
+    // but we want the source *account*; reverse the relation in WHERE clause).
+    SumPerSrc = SELECT s
+        FROM Account:s -(FROM_ACCOUNT>:e)-
+        WHERE e.ts >= start_ts
+        ACCUM @@outTotal  += (s.id -> e.amount),
+              @@outCount  += (s.id -> 1)
+        LIMIT edge_limit;
+
+    // Walk every edge again, emit when above factor.
+    Outgoing = SELECT t
+        FROM Account:s -(FROM_ACCOUNT>:e)- Transaction:tx
+        WHERE e.ts >= start_ts
+        LIMIT edge_limit;
+
+    PRINT @@outTotal AS totalsByAccount,
+          @@outCount AS countsByAccount,
+          burst_factor AS burstFactor;
+}

@@ -16,6 +16,11 @@ from .fraud_queries import (
     GSQL_TRANSACTION_RINGS,
     GSQL_WCC,
 )
+from .funds_queries import (
+    GSQL_BURST_AMOUNT,
+    GSQL_CIRCULAR_FUNDS,
+    GSQL_FUNDS_PATH_TRACE,
+)
 from . import edge_features
 from . import gdsl
 
@@ -29,6 +34,9 @@ __all__ = [
     "GSQL_SHARED_DEVICE_RINGS",
     "GSQL_TRANSACTION_RINGS",
     "GSQL_WCC",
+    "GSQL_BURST_AMOUNT",
+    "GSQL_CIRCULAR_FUNDS",
+    "GSQL_FUNDS_PATH_TRACE",
     "edge_features",
     "gdsl",
-]
+]      
