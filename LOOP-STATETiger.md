@@ -314,5 +314,24 @@ DONE = three measurable things, all in one shell-verify-able command:
   - handing friend the URL + admin password so they at least see the login page and the Chromium in chrome opens (visual progress + chat work, but no streaming)
 - **Decision so far**: Share the URL as-is. Friend can log in, will see the React UI opening inside Chromium (it autostarts `http://host.docker.internal:5173`). The Chromium video stream may not render in their browser; if it doesn't, that's the WebRTC gap. Confirm with user before going further.
 
+### 2026-07-21 02:50 (Tue) — vite 403 fix + end-to-end neko verification
+- **Vite Host-header 403 (FIXED)**: neko chromium autostart URL is `http://host.docker.internal:5173`, but Vite 5+ rejects unknown Host headers by default → chromium's first GET returned `HTTP 403, 0 bytes`. Fix: `frontend/vite.config.ts` gained `server.allowedHosts: true`. Commit `3e12dc2`.
+- **End-to-end chain verified from inside the chromium container** (so this is what the friend will see):
+  - `docker exec neko-neko-chromium-1 curl http://host.docker.internal:5173/` → **HTTP 200, 616 bytes** (React shell HTML)
+  - `docker exec neko-neko-chromium-1 curl http://host.docker.internal:5173/api/health` → **HTTP 200** (vite proxy → backend 8888 → `{ok:true, service:fraud-risk-engine, tigergraph:unreachable}`)
+  - Backend endpoints reachability (from host): `/api/health` 200, `/api/dataset` 200 (1754 B), `/api/robustness` 400 (needs ctx), `/api/funds/path` 422 (needs seed)
+- **Stale processes after machine sleep** (per pattern in 2026-07-20 11:40):
+  - Python PID 24376 (uvicorn) was hung (port 8888 listening but request never returned). Killed + restarted with bogus `TG_HOST=127.0.0.1 TG_RESTPP_PORT=19999` so the TG ping inside `/api/health` fails fast instead of waiting 14s for unreachable TigerGraph. New PID 31096.
+  - Vite PID 28652 was alive but serving with stale config. Killed + restarted to pick up `allowedHosts=true`. New PID 30456.
+- **Live state right now** (verified ~03:01 UTC+8):
+  - neko container `neko-neko-chromium-1` — Up 3 hours (healthy), ports `8080/52000-52100/59000`
+  - backend uvicorn PID 31096 on `:8888`, `GET /api/health` → 200 (~13s because TG ping retries × 3 × 4s)
+  - frontend vite PID 30456 on `:5173`, `GET /` → 200
+  - serveo SSH PID 15468 → forwards `serveo.net:80 → localhost:8080`
+  - **URL:** `https://db8dd22cdcdc1dc4-106-121-151-141.serveousercontent.com/` → HTTP 200, 1424 bytes, `<title>n.eko</title>` (confirmed login page loads from a fresh client)
+- **Status**: neko + serveo + vite + backend + chromium → vite pipeline ALL green. Item 4 from next-steps (curl /api/health + friend view through serveo) is **done**. Items 5 (hand URL to friend) and 6 (resilient automation) remain.
+- **Commit**: `3e12dc2 fix(neko): vite allowedHosts=true so chromium container (host.docker.internal) is not 403'd` (root workspace). Push to origin/main deferred to a non-GFW window.
+
+
 
 
