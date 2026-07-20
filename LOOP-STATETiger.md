@@ -28,6 +28,9 @@
       `app/scheduler/funds_monitor.py` `app/scheduler/__init__.py`
     - Tests: `tests/test_funds.py` (10) + `tests/test_funds_monitor.py` (5)
   - Status: **done, ready for commit+push**.
+  - Commit `b45df02` created; **push BLOCKED** by GFW ("Failed to connect to github.com:443 after 21s") on 3 retries with 5s backoff each.
+    - Recorded as **needs-me**: re-push from a non-GFW network when convenient.
+    - Work is committed locally; nothing lost.
 
 
 - 2026-07-19 09:21 — GDSL import commit pushed to origin/main.
