@@ -6,6 +6,9 @@ export default defineConfig({
   server: {
     port: 5173,
     host: true,
+    // neko chromium container reaches vite via http://host.docker.internal:5173;
+    // Vite 5+ rejects unknown Host headers by default, so allow the Docker bridge name.
+    allowedHosts: true,
     proxy: {
       "/api": {
         target: "http://localhost:8888",
