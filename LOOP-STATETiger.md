@@ -346,6 +346,7 @@ DONE = three measurable things, all in one shell-verify-able command:
   - New: `.neko/share-neko-supervisor.ps1`, `.neko/healthcheck.ps1`
   - Modified: `.neko/README.md` (added supervisor/healthcheck sections + vite allowedHosts note + TG_HOST override note), `.gitignore` (neko runtime state)
 - **Status**: items 1-6 from the Neko thread next-steps queue are now all done. The only remaining "open question" is the WebRTC streaming gap (NM-11) — but that's an architectural blocker (serveo is TCP-only, friend can't establish UDP for WebRTC media) and is a known limitation, not a TODO.
+- **Commit**: `47012b0 feat(neko): add supervisor + healthcheck scripts + gitignore neko runtime state` — 9 files, +574 lines. Local-only; 4 push attempts all failed with `Failed to connect to github.com:443 after 21093ms` (GFW hard-block window). Logged as **NM-9** carry-over. Local HEAD = `47012b0`; `origin/main` = `35f64f8` (one commit behind).
 
 
 
