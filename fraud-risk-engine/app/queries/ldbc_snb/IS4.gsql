@@ -1,0 +1,6 @@
+// IS4 — Add Comment
+// Create a Comment on a Post or Comment, with content.
+CREATE QUERY is4(VERTEX<Person> personId, VERTEX<Message> messageId, STRING content) FOR GRAPH SocialNet SYNTAX V2 {
+    Comment c = INSERT INTO Comment VALUES (UUID(), content, NOW(), personId, messageId);
+    PRINT c.id AS commentId;
+}

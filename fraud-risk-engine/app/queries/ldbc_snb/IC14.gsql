@@ -1,0 +1,28 @@
+// IC14 — Person's Messages in Date Range
+// Given a Person and a date range, return their Comments and Posts.
+// Person -> hasCreator -> Comment|Post WHERE creationDate BETWEEN start AND end
+CREATE QUERY ic14(VERTEX<Person> personId, STRING startDate, STRING endDate, INT limitVal=100) FOR GRAPH SocialNet SYNTAX V2 {
+    TYPEDEF TUPLE<STRING type, STRING id, STRING content, DATETIME creationDate> MessageTuple;
+
+    HeapAccum<MessageTuple>(limitVal, creationDate DESC) @@messages;
+
+    // Comments by this person in date range
+    Comments = SELECT c
+        FROM Person:p -(hasCreator>:e)- Comment:c
+        WHERE p.id == personId
+          AND c.creationDate >= DATETIME(startDate)
+          AND c.creationDate <= DATETIME(endDate)
+        ACCUM @@messages += MessageTuple("Comment", c.id, c.content, c.creationDate)
+        LIMIT limitVal;
+
+    // Posts by this person in date range
+    Posts = SELECT pst
+        FROM Person:p -(hasCreator>:e)- Post:pst
+        WHERE p.id == personId
+          AND pst.creationDate >= DATETIME(startDate)
+          AND pst.creationDate <= DATETIME(endDate)
+        ACCUM @@messages += MessageTuple("Post", pst.id, pst.content, pst.creationDate)
+        LIMIT limitVal;
+
+    PRINT @@messages AS messages;
+}

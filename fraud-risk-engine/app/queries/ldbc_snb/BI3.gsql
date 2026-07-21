@@ -1,0 +1,37 @@
+// BI3 — Active Users by Post Count
+// Find the most-active Persons by number of Posts created in a date range.
+CREATE QUERY bi3(STRING startDate, STRING endDate, INT limitVal=100) FOR GRAPH SocialNet SYNTAX V2 {
+    TYPEDEF TUPLE<INT postCount, STRING firstName, STRING lastName, STRING personId> UserActivity;
+
+    MapAccum<STRING, INT> @@personPostCount;
+    MapAccum<STRING, STRING> @@personFirstName;
+    MapAccum<STRING, STRING> @@personLastName;
+
+    // Count posts per person
+    Posts = SELECT pst
+        FROM Post:pst
+        WHERE pst.creationDate >= DATETIME(startDate) AND pst.creationDate <= DATETIME(endDate)
+        ACCUM
+            VERTEX<Person> creator = pst.creatorId,
+            @@personPostCount += (creator -> 1);
+
+    // Get person names
+    Persons = SELECT pr FROM Person:pr
+        WHERE @@personPostCount.containsKey(pr.id)
+        POST-ACCUM
+            @@personFirstName += (pr.id -> pr.firstName),
+            @@personLastName  += (pr.id -> pr.lastName);
+
+    // Build sorted result
+    HeapAccum<UserActivity>(limitVal, postCount DESC, lastName ASC, firstName ASC) @@activeUsers;
+    FOREACH (pid, cnt) IN @@personPostCount DO
+        @@activeUsers += UserActivity(
+            cnt,
+            @@personFirstName.get(pid),
+            @@personLastName.get(pid),
+            pid
+        );
+    END;
+
+    PRINT @@activeUsers AS activeUsers;
+}

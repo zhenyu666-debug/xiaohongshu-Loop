@@ -1,0 +1,39 @@
+// BI1 — Messages by Year/Month
+// Count the number of Messages (Posts + Comments) created in each year and month.
+CREATE QUERY bi1(STRING startDate, STRING endDate) FOR GRAPH SocialNet SYNTAX V2 {
+    TYPEDEF TUPLE<INT year, INT month, INT messageCount> MonthlyCount;
+
+    MapAccum<STRING, INT> @@monthCounts;
+
+    // Count Posts by month
+    Posts = SELECT p
+        FROM Post:p
+        WHERE p.creationDate >= DATETIME(startDate) AND p.creationDate <= DATETIME(endDate)
+        ACCUM
+            INT y = YEAR(p.creationDate),
+            INT m = MONTH(p.creationDate),
+            STRING key = y + "-" + m,
+            @@monthCounts += (key -> 1);
+
+    // Count Comments by month
+    Comments = SELECT c
+        FROM Comment:c
+        WHERE c.creationDate >= DATETIME(startDate) AND c.creationDate <= DATETIME(endDate)
+        ACCUM
+            INT y = YEAR(c.creationDate),
+            INT m = MONTH(c.creationDate),
+            STRING key = y + "-" + m,
+            @@monthCounts += (key -> 1);
+
+    // Sort by year-month and build result
+    HeapAccum<MonthlyCount>(1000, year ASC, month ASC) @@monthly;
+    FOREACH (key, cnt) IN @@monthCounts DO
+        // Parse key "YYYY-M" or "YYYY-MM"
+        INT dashPos = key.find("-"),
+        y = INTEGER(key.substring(0, dashPos)),
+        m = INTEGER(key.substring(dashPos + 1));
+        @@monthly += MonthlyCount(y, m, cnt);
+    END;
+
+    PRINT @@monthly AS messagesByMonth;
+}

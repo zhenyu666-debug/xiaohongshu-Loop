@@ -1,0 +1,7 @@
+// IS1 — Update Person LastName
+// Update a Person's lastName.
+CREATE QUERY is1(VERTEX<Person> personId, STRING newLastName) FOR GRAPH SocialNet SYNTAX V2 {
+    P = SELECT p FROM Person:p WHERE p.id == personId
+        POST-ACCUM p.lastName = newLastName;
+    PRINT "OK" AS status;
+}

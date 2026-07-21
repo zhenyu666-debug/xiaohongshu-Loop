@@ -1,0 +1,6 @@
+// IS3 — Add Like
+// Add a LIKES edge from Person to Post or Comment.
+CREATE QUERY is3(VERTEX<Person> personId, VERTEX<Message> messageId) FOR GRAPH SocialNet SYNTAX V2 {
+    INSERT INTO LIKES (FROM, TO) VALUES (personId, messageId);
+    PRINT "OK" AS status;
+}

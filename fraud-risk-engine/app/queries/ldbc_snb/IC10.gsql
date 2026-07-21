@@ -1,0 +1,16 @@
+// IC10 — Person's Interested Tags
+// Given a Person, return the Tags they are interested in, ordered by name.
+// Person -> hasInterest -> Tag
+CREATE QUERY ic10(VERTEX<Person> personId, INT limitVal=10) FOR GRAPH SocialNet SYNTAX V2 {
+    TYPEDEF TUPLE<STRING name, STRING url> TagTuple;
+
+    HeapAccum<TagTuple>(limitVal, name ASC) @@tags;
+
+    Tags = SELECT t
+        FROM Person:p -(hasInterest>:ei)- Tag:t
+        WHERE p.id == personId
+        ACCUM @@tags += TagTuple(t.name, t.url)
+        LIMIT limitVal;
+
+    PRINT @@tags AS interests;
+}

@@ -1,0 +1,20 @@
+// BI2 — Popular Tags by User Count
+// For each Tag, count the number of distinct Persons interested in it.
+CREATE QUERY bi2(STRING startDate, STRING endDate) FOR GRAPH SocialNet SYNTAX V2 {
+    TYPEDEF TUPLE<STRING tagName, INT userCount> TagPopularity;
+
+    MapAccum<STRING, SetAccum<STRING>> @@tagUsers;
+
+    // Person -> hasInterest -> Tag
+    Interested = SELECT t
+        FROM Person:p -(hasInterest>:ei)- Tag:t
+        ACCUM @@tagUsers += (t.name -> p.id);
+
+    // Build result: distinct user count per tag
+    HeapAccum<TagPopularity>(100, userCount DESC) @@popularTags;
+    ForeachTags = SELECT t FROM Tag:t
+        POST-ACCUM @@popularTags += TagPopularity(t.name, @@tagUsers.get(t.name).size())
+        LIMIT 100;
+
+    PRINT @@popularTags AS popularTags;
+}

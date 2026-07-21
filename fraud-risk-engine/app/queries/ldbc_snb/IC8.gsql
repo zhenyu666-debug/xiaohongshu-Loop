@@ -1,0 +1,17 @@
+// IC8 — Friend's Comments
+// Given a Person, find their friends' comments on posts ordered by creationDate DESC.
+// Person -> knows -> Person -> hasCreator -> Comment -> replyOf -> Post
+CREATE QUERY ic8(VERTEX<Person> personId, INT limitVal=20) FOR GRAPH SocialNet SYNTAX V2 {
+    TYPEDEF TUPLE<VERTEX<Comment> comment, DATETIME creationDate> CommentTuple;
+
+    HeapAccum<CommentTuple>(limitVal, creationDate DESC) @@comments;
+
+    // Friends' comments via knows -> hasCreator -> replyOf -> Post
+    FriendComments = SELECT c
+        FROM Person:me -(KNOWS>:e1)- Person:f -(hasCreator>:e2)- Comment:c
+        WHERE me.id == personId
+        ACCUM @@comments += CommentTuple(c, c.creationDate)
+        LIMIT limitVal;
+
+    PRINT @@comments AS friendComments;
+}

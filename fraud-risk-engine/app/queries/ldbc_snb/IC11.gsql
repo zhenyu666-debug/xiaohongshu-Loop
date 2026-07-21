@@ -1,0 +1,21 @@
+// IC11 — Friends with Specific Tag Interest
+// Given a Person and a Tag, count how many of their friends are also interested in the tag.
+// Person -> knows -> Person -> hasInterest -> Tag(name=?)
+CREATE QUERY ic11(VERTEX<Person> personId, STRING tagName) FOR GRAPH SocialNet SYNTAX V2 {
+    SetAccum<STRING> @@friendIds;
+
+    // Get all friends of personId
+    Friends = SELECT f
+        FROM Person:me -(KNOWS>:e)- Person:f
+        WHERE me.id == personId
+        ACCUM @@friendIds += f.id;
+
+    // Count friends who also have this interest
+    SumAccum<INT> @@friendCount;
+    InterestedFriends = SELECT f
+        FROM Person:f -(hasInterest>:ei)- Tag:t
+        WHERE @@friendIds.contains(f.id) AND t.name == tagName
+        ACCUM @@friendCount += 1;
+
+    PRINT @@friendCount AS friendCount;
+}

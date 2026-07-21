@@ -1,0 +1,16 @@
+// IC2 — Friends of Person
+// Given a Person, return their friends ordered by lastName, firstName.
+// SELECT Friend WHERE (Person)-[KNOWS]-(Friend) ORDER BY lastName, firstName LIMIT N
+CREATE QUERY ic2(VERTEX<Person> personId, INT limitVal=20) FOR GRAPH SocialNet SYNTAX V2 {
+    TYPEDEF TUPLE<STRING firstName, STRING lastName, INT distance> FriendTuple;
+
+    HeapAccum<FriendTuple>(limitVal, lastName ASC, firstName ASC) @@friends;
+
+    // KNOWS is bidirectional in LDBC — traverse from personId to friends
+    Friends = SELECT f
+        FROM Person:me -(KNOWS>:e)- Person:f
+        WHERE me.id == personId
+        ACCUM @@friends += FriendTuple(f.firstName, f.lastName, 1);
+
+    PRINT @@friends AS friends;
+}

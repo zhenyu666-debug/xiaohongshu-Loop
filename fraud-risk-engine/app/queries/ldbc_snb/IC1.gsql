@@ -1,0 +1,33 @@
+// IC1 — Person Profile
+// Given a Person, return their profile info including location hierarchy.
+// SELECT Person JOIN Place (city) JOIN Country JOIN Continent
+CREATE QUERY ic1(SET<VERTEX<Person>> personId) FOR GRAPH SocialNet SYNTAX V2 {
+    TYPEDEF TUPLE<STRING firstName, STRING lastName, DATETIME birthday,
+                   STRING gender, STRING browserUsed, STRING locationIP,
+                   STRING cityName, STRING countryName, STRING continentName> PersonTuple;
+
+    HeapAccum<PersonTuple>(100, lastName ASC, firstName ASC) @@result;
+
+    P = SELECT p
+        FROM Person:p
+        WHERE p.id IN personId
+        // Join to city via livesIn / isPartOf / PartOf_Country / PartOf_Continent chains
+        POST-ACCUM
+            STRING cityName = "",
+                  countryName = "",
+                  continentName = "";
+    // In LDBC schema: Person -> isLocatedIn -> Place (city) -> isPartOf -> Country
+    // Country -> isPartOf -> Continent
+    // We traverse the graph to get the location names
+    Persons = SELECT p
+        FROM Person:p -(isLocatedIn>:ei)- Place:city
+        WHERE p.id IN personId
+        ACCUM
+            cityName = city.name,
+            @@result += PersonTuple(
+                p.firstName, p.lastName, p.birthday, p.gender,
+                p.browserUsed, p.locationIP,
+                cityName, countryName, continentName
+            );
+    PRINT @@result AS personProfiles;
+}

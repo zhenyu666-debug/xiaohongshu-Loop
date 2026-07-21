@@ -1,0 +1,35 @@
+// IC12 — Friends of Friends
+// Given a Person, find their friends' friends (2-hop), excluding self and direct friends.
+// Person -> knows -> Friend -> knows -> FoF
+CREATE QUERY ic12(VERTEX<Person> personId, INT limitVal=10) FOR GRAPH SocialNet SYNTAX V2 {
+    SetAccum<STRING> @@directFriends;
+    SetAccum<STRING> @@fofs;
+
+    // 1. Get direct friends
+    Direct = SELECT f
+        FROM Person:p -(KNOWS>:e)- Person:f
+        WHERE p.id == personId
+        ACCUM @@directFriends += f.id;
+
+    // 2. Get friends of friends
+    FoF = SELECT fof
+        FROM Person:f -(KNOWS>:e)- Person:fof
+        WHERE @@directFriends.contains(f.id)
+        ACCUM
+            // Exclude self and direct friends
+            IF fof.id != personId AND NOT @@directFriends.contains(fof.id) THEN
+                @@fofs += fof.id
+            END;
+
+    // Fetch FoF details ordered by id (deterministic)
+    TYPEDEF TUPLE<STRING firstName, STRING lastName, STRING id> FoFTuple;
+    HeapAccum<FoFTuple>(limitVal, lastName ASC, firstName ASC) @@fofDetails;
+
+    FoFDetails = SELECT p
+        FROM Person:p
+        WHERE @@fofs.contains(p.id)
+        ACCUM @@fofDetails += FoFTuple(p.firstName, p.lastName, p.id)
+        LIMIT limitVal;
+
+    PRINT @@fofDetails AS friendsOfFriends;
+}

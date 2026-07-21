@@ -1,0 +1,6 @@
+// IS7 — Remove Forum Member
+// Remove a Person from a Forum's membership.
+CREATE QUERY is7(VERTEX<Forum> forumId, VERTEX<Person> personId) FOR GRAPH SocialNet SYNTAX V2 {
+    DELETE FROM HAS_MEMBER WHERE FROM == forumId AND TO == personId;
+    PRINT "OK" AS status;
+}

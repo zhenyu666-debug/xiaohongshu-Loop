@@ -1,0 +1,6 @@
+// IS6 — Add Forum Member
+// Add a Person as a member of a Forum with joinDate.
+CREATE QUERY is6(VERTEX<Forum> forumId, VERTEX<Person> personId, STRING joinDate) FOR GRAPH SocialNet SYNTAX V2 {
+    INSERT INTO HAS_MEMBER (FROM, TO) VALUES (forumId, personId);
+    PRINT "OK" AS status;
+}

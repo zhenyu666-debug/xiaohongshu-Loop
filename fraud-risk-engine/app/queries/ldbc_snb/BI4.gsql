@@ -1,0 +1,28 @@
+// BI4 — Friendships Created by Month
+// Count the number of KNOWS edges created in each year and month.
+CREATE QUERY bi4(STRING startDate, STRING endDate) FOR GRAPH SocialNet SYNTAX V2 {
+    TYPEDEF TUPLE<INT year, INT month, INT friendshipCount> MonthlyFriendships;
+
+    MapAccum<STRING, INT> @@monthCounts;
+
+    // KNOWS edges have a creationDate attribute in LDBC SNB schema
+    Knows = SELECT k
+        FROM KNOWS:k
+        WHERE k.creationDate >= DATETIME(startDate) AND k.creationDate <= DATETIME(endDate)
+        ACCUM
+            INT y = YEAR(k.creationDate),
+            INT m = MONTH(k.creationDate),
+            STRING key = y + "-" + m,
+            @@monthCounts += (key -> 1);
+
+    // Sort and build result
+    HeapAccum<MonthlyFriendships>(1000, year ASC, month ASC) @@monthly;
+    FOREACH (key, cnt) IN @@monthCounts DO
+        INT dashPos = key.find("-"),
+        y = INTEGER(key.substring(0, dashPos)),
+        m = INTEGER(key.substring(dashPos + 1));
+        @@monthly += MonthlyFriendships(y, m, cnt);
+    END;
+
+    PRINT @@monthly AS friendshipsByMonth;
+}

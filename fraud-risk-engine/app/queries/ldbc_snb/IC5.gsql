@@ -1,0 +1,21 @@
+// IC5 — Are Two Persons Friends?
+// Given two Persons, check if they are direct friends (knows edge exists).
+// RETURN true if KNOWS edge found between person1 and person2
+CREATE QUERY ic5(VERTEX<Person> person1Id, VERTEX<Person> person2Id) FOR GRAPH SocialNet SYNTAX V2 {
+    SumAccum<INT> @@found;
+
+    // Check if person1 knows person2 (KNOWS is bidirectional but we check both directions)
+    Check = SELECT p2
+        FROM Person:p1 -(KNOWS>:e)- Person:p2
+        WHERE p1.id == person1Id AND p2.id == person2Id
+        ACCUM @@found += 1;
+
+    // Also check reverse direction
+    CheckReverse = SELECT p1
+        FROM Person:p1 -(KNOWS>:e)- Person:p2
+        WHERE p2.id == person1Id AND p1.id == person2Id
+        ACCUM @@found += 1;
+
+    BOOL areFriends = @@found > 0;
+    PRINT areFriends;
+}

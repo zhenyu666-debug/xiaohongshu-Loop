@@ -1,0 +1,24 @@
+// IC6 — Friend's Posts about a Tag
+// Given a Person and a Tag, find Posts about the Tag created after maxDate,
+// ordered by creationDate DESC.
+// Person -> hasInterest -> Tag <- hasTag <- Post
+CREATE QUERY ic6(VERTEX<Person> personId, STRING tagName, STRING maxDate, INT limitVal=10) FOR GRAPH SocialNet SYNTAX V2 {
+    TYPEDEF TUPLE<STRING postId, DATETIME creationDate, STRING content> PostTuple;
+
+    HeapAccum<PostTuple>(limitVal, creationDate DESC) @@posts;
+
+    // Get tags the person is interested in that match tagName
+    // Then find posts with those tags created after maxDate
+    Tags = SELECT t
+        FROM Person:p -(hasInterest>:ei)- Tag:t
+        WHERE p.id == personId AND t.name == tagName;
+
+    // Get friends who have posts about those tags
+    FriendPosts = SELECT pst
+        FROM Tags:t -(hasTag>:ht)- Post:pst
+        WHERE pst.creationDate >= DATETIME(maxDate)
+        ACCUM @@posts += PostTuple(pst.id, pst.creationDate, pst.content)
+        LIMIT limitVal;
+
+    PRINT @@posts AS taggedPosts;
+}

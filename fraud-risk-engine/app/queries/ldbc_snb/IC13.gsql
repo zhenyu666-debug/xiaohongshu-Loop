@@ -1,0 +1,39 @@
+// IC13 — Shortest Path via KNOWS
+// Given two Persons, find the shortest path via KNOWS edges using BFS.
+// Returns the path vertices and depth.
+CREATE QUERY ic13(VERTEX<Person> person1Id, VERTEX<Person> person2Id) FOR GRAPH SocialNet SYNTAX V2 {
+    // BFS accumulators on vertices
+    MinAccum<INT> @@minDepth;
+    ListAccum<VERTEX<Person>> @@path;
+
+    // BFS using SetAccum and MinAccum for shortest path
+    // Level 0: start vertex
+    Start = {person1Id};
+    Start = SELECT s FROM Start:s POST-ACCUM s.depth = 0;
+
+    // BFS frontier expansion
+    INT maxDepth = 10;
+    BOOL found = FALSE;
+
+    // Iterate BFS levels
+    WHILE found == FALSE LIMIT maxDepth DO
+        // Expand frontier
+        Frontier = SELECT tgt
+            FROM Start -(KNOWS>:e)- Person:tgt
+            WHERE tgt.depth == gpipe.depth + 1 OR tgt.depth == 0
+            ACCUM
+                IF tgt.depth == 0 THEN
+                    tgt.depth = gpipe.depth + 1,
+                    tgt.@path += gpipe,
+                    tgt.@path += tgt
+                END
+            POST-ACCUM
+                IF tgt.id == person2Id THEN
+                    @@minDepth += tgt.depth,
+                    @@path += tgt.@path,
+                    found = TRUE
+                END;
+    END;
+
+    PRINT @@minDepth AS shortestPathDepth, @@path AS shortestPath;
+}

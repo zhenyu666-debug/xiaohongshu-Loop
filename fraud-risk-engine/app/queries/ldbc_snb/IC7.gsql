@@ -1,0 +1,17 @@
+// IC7 — Friend's Posts
+// Given a Person, find their friends' posts ordered by creationDate DESC.
+// Person -> knows -> Person -> hasCreator -> Post
+CREATE QUERY ic7(VERTEX<Person> personId, INT limitVal=20) FOR GRAPH SocialNet SYNTAX V2 {
+    TYPEDEF TUPLE<VERTEX<Post> post, DATETIME creationDate> PostTuple;
+
+    HeapAccum<PostTuple>(limitVal, creationDate DESC) @@posts;
+
+    // Friends' posts via knows -> hasCreator
+    FriendPosts = SELECT pst
+        FROM Person:me -(KNOWS>:e1)- Person:f -(hasCreator>:e2)- Post:pst
+        WHERE me.id == personId
+        ACCUM @@posts += PostTuple(pst, pst.creationDate)
+        LIMIT limitVal;
+
+    PRINT @@posts AS friendPosts;
+}

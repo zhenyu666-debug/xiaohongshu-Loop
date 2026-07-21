@@ -1,0 +1,6 @@
+// IS5 — Add Forum
+// Create a new Forum with title and creationDate.
+CREATE QUERY is5(STRING title, STRING creationDate) FOR GRAPH SocialNet SYNTAX V2 {
+    Forum f = INSERT INTO Forum VALUES (UUID(), title, DATETIME(creationDate));
+    PRINT f.id AS forumId;
+}

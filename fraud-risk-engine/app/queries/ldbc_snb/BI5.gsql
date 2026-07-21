@@ -1,0 +1,47 @@
+// BI5 — Tag Co-occurrence
+// Find pairs of Tags that appear together on the same Message, ordered by frequency.
+CREATE QUERY bi5(STRING startDate, STRING endDate, INT minCooccurrence=10) FOR GRAPH SocialNet SYNTAX V2 {
+    TYPEDEF TUPLE<STRING tag1, STRING tag2, INT cooccurrenceCount> CooccurTuple;
+
+    // For each message, collect all its tags
+    MapAccum<STRING, SetAccum<STRING>> @@messageTags;
+
+    Messages = SELECT m
+        FROM Message:m -(hasTag>:ht)- Tag:t
+        WHERE m.creationDate >= DATETIME(startDate) AND m.creationDate <= DATETIME(endDate)
+        ACCUM @@messageTags += (m.id -> t.name);
+
+    // Count tag-pair co-occurrences
+    MapAccum<STRING, INT> @@pairCounts;
+    FOREACH (msgId, tagSet) IN @@messageTags DO
+        // Generate all pairs from tagSet
+        ListAccum<STRING> @@tagList;
+        @@tagList = tagSet.toList();
+        INT sz = @@tagList.size();
+        IF sz >= 2 THEN
+            FOREACH i IN RANGE(0, sz - 2) DO
+                FOREACH j IN RANGE(i + 1, sz - 1) DO
+                    STRING t1 = @@tagList.get(i),
+                           t2 = @@tagList.get(j),
+                           key = IF t1 < t2 THEN t1 + "||" + t2 ELSE t2 + "||" + t1 END;
+                    @@pairCounts += (key -> 1);
+                END;
+            END;
+        END;
+    END;
+
+    // Filter by minCooccurrence and sort
+    HeapAccum<CooccurTuple>(100, cooccurrenceCount DESC) @@topPairs;
+    FOREACH (pairKey, cnt) IN @@pairCounts DO
+        IF cnt >= minCooccurrence THEN
+            INT sep = pairKey.find("||");
+            @@topPairs += CooccurTuple(
+                pairKey.substring(0, sep),
+                pairKey.substring(sep + 2),
+                cnt
+            );
+        END;
+    END;
+
+    PRINT @@topPairs AS tagCooccurrence;
+}

@@ -1,0 +1,6 @@
+// IS2 — Add Friend
+// Add a KNOWS edge between two Persons.
+CREATE QUERY is2(VERTEX<Person> person1Id, VERTEX<Person> person2Id) FOR GRAPH SocialNet SYNTAX V2 {
+    INSERT INTO KNOWS (FROM, TO) VALUES (person1Id, person2Id);
+    PRINT "OK" AS status;
+}

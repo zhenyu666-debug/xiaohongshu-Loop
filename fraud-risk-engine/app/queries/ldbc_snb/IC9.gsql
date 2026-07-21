@@ -1,0 +1,35 @@
+// IC9 — Common Friends
+// Given two Persons, return their common friends ordered by lastName, firstName.
+// Common = Person1.knows ∩ Person2.knows
+CREATE QUERY ic9(VERTEX<Person> person1Id, VERTEX<Person> person2Id, INT limitVal=20) FOR GRAPH SocialNet SYNTAX V2 {
+    TYPEDEF TUPLE<STRING firstName, STRING lastName> CommonFriendTuple;
+
+    SetAccum<STRING> @@person1Friends;
+    SetAccum<STRING> @@person2Friends;
+
+    // Get person1's friends
+    F1 = SELECT f
+        FROM Person:p -(KNOWS>:e)- Person:f
+        WHERE p.id == person1Id
+        ACCUM @@person1Friends += f.id;
+
+    // Get person2's friends
+    F2 = SELECT f
+        FROM Person:p -(KNOWS>:e)- Person:f
+        WHERE p.id == person2Id
+        ACCUM @@person2Friends += f.id;
+
+    // Intersection
+    SetAccum<STRING> @@commonIds;
+    @@commonIds = @@person1Friends INTERSECT @@person2Friends;
+
+    // Fetch common friends ordered by name
+    HeapAccum<CommonFriendTuple>(limitVal, lastName ASC, firstName ASC) @@commonFriends;
+    Common = SELECT p
+        FROM Person:p
+        WHERE @@commonIds.contains(p.id)
+        ACCUM @@commonFriends += CommonFriendTuple(p.firstName, p.lastName)
+        LIMIT limitVal;
+
+    PRINT @@commonFriends AS commonFriends;
+}
