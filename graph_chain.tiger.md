@@ -58,6 +58,7 @@ W:rob      RobustnessView.tsx React 页（中央 shape view + 9-row measures + A
 W:tun      serveo SSH 隧道 + URL 捕获（NM-6 部分解决）
 W:sup      .neko/share-neko-supervisor.ps1 + healthcheck.ps1 + .gitignore（自动重启 down 服务）
 W:push     push a0acc30 (47012b0 + 35f64f8) — 6 次 retry attempt 1 成功 (NM-9 closed)
+W:fmp      FundsMonitorPanel.tsx -- v0.3.3 UI for path / circles / burst detectors + monitor controller (988 lines, commit a0a50cd)
 ```
 
 ## 4. 工作节点（W）— 进行中 / 待启动
@@ -117,6 +118,7 @@ flowchart LR
     Wtun[serveo tunnel] --> Pfre
     Wsup[supervisor + healthcheck] --> Pfre
     Wpush[push a0acc30] --> Pfre
+    Wfmp[FundsMonitorPanel] --> Pfre
     Wtun -.-> Wshare
   end
 
