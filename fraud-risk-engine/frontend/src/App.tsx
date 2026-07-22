@@ -8,8 +8,9 @@ import { ExploreGraph } from './pages/ExploreGraph';
 import { PaySimView } from './pages/PaySimView';
 import { MedGraphView } from './pages/MedGraphView';
 import { RobustnessView } from './pages/RobustnessView';
+import { FundsMonitorPanel } from './pages/FundsMonitorPanel';
 
-type Page = 'design' | 'map' | 'load' | 'queries' | 'explore' | 'paysim' | 'medgraph' | 'robustness';
+type Page = 'design' | 'map' | 'load' | 'queries' | 'explore' | 'paysim' | 'medgraph' | 'robustness' | 'funds';
 
 const NAV_ITEMS: { id: Page; label: string; icon: string }[] = [
   { id: 'design', label: 'Design Schema', icon: '⬡' },
@@ -20,6 +21,7 @@ const NAV_ITEMS: { id: Page; label: string; icon: string }[] = [
   { id: 'paysim', label: 'PaySim Fraud', icon: '⚠' },
   { id: 'medgraph', label: 'MedGraph', icon: '✚' },
   { id: 'robustness', label: 'Graph Robustness', icon: '◊' },
+  { id: 'funds', label: 'Funds Monitor', icon: '₣' },
 ];
 
 function App() {
@@ -35,6 +37,7 @@ function App() {
       case 'paysim':      return <PaySimView />;
       case 'medgraph':    return <MedGraphView />;
       case 'robustness':  return <RobustnessView />;
+      case 'funds':       return <FundsMonitorPanel />;
     }
   };
 
