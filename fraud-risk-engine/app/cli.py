@@ -18,6 +18,7 @@ from pathlib import Path
 
 from .config import get_settings
 from .loader.synth_generator import build_dataset, dataset_to_jsonl_bundles
+from .runner import ClientKind, LocalRunner, RemoteRunner, make_runner
 
 
 def cmd_doctor(_: argparse.Namespace) -> int:
@@ -62,19 +63,23 @@ def cmd_build(args: argparse.Namespace) -> int:
     return 0
 
 
-def cmd_detect(_: argparse.Namespace) -> int:
+def cmd_detect(args: argparse.Namespace) -> int:
     from .api import _build_dataset_from_settings, STATE
-    from .detection import run_local_detector
 
     settings = get_settings()
     ds = STATE.get("latest_dataset") or _build_dataset_from_settings(settings)
-    run = run_local_detector(
-        ds,
-        ring_min_len=settings.thresh_ring_min_len,
-        shared_device_min=settings.thresh_shared_device_min,
-        burst_min_count=settings.thresh_burst_tx_count,
-        top_k=settings.thresh_pagerank_topk,
-    )
+
+    if args.client == ClientKind.TG:
+        # Forced TG path: do not fall back, so the user sees a degraded
+        # run instead of silently getting local results.
+        runner: LocalRunner | RemoteRunner = RemoteRunner(dataset=None)
+    elif args.client == ClientKind.LOCAL:
+        runner = LocalRunner(ds)
+    else:  # auto
+        runner = make_runner(ClientKind.AUTO, dataset=ds)
+
+    run = runner.run()
+    print(f"client  : {args.client}")
     print(f"backend : {run.backend}")
     print(f"status  : {run.status}")
     print(f"alerts  : {len(run.alerts)}")
@@ -139,7 +144,13 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--transactions", type=int)
     p.add_argument("--fraud-rings", type=int)
     p.add_argument("--bare", action="store_true")
-    sub.add_parser("detect")
+    p_detect = sub.add_parser("detect")
+    p_detect.add_argument(
+        "--client",
+        choices=[c.value for c in ClientKind],
+        default=ClientKind.AUTO.value,
+        help="detection backend: auto (TG→local), local only, tg only (no fallback)",
+    )
     p = sub.add_parser("serve")
     p.add_argument("--port", type=int)
     sub.add_parser("schema")
