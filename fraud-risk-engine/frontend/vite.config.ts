@@ -13,7 +13,6 @@ export default defineConfig({
       "/api": {
         target: "http://localhost:8888",
         changeOrigin: true,
-        // Don't follow redirects — pass through as-is
         secure: false,
       },
     },

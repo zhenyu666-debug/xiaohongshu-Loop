@@ -449,7 +449,7 @@ class TigerGraphDetector:
 
                 # Path: BFS
                 try:
-                    res = _gdsl(client, "tg_bfs", {"v_start": "Account", "e_type_set": ["SHARES_DEVICE"], "max_hops": 5, "target": ""})
+                    res = _gdsl(client, "tg_bfs", {"v_start": "Account", "e_type_set": ["SHARES_DEVICE"], "max_hops": 20, "target": ""})
                     a = bfs_alert_from_gsql(res)
                     if a: alerts.append(a)
                 except httpx.HTTPError as exc:
@@ -457,7 +457,7 @@ class TigerGraphDetector:
 
                 # Path: Shortest path (no weight)
                 try:
-                    res = _gdsl(client, "tg_shortest_ss_no_wt", {"v_start": "", "v_target": "", "e_type": "SHARES_DEVICE", "max_hops": 10})
+                    res = _gdsl(client, "tg_shortest_ss_no_wt", {"v_start": "", "v_target": "", "e_type": "SHARES_DEVICE", "max_hops": 20})
                     a = shortest_path_alert_from_gsql(res)
                     if a: alerts.append(a)
                 except httpx.HTTPError as exc:
@@ -465,7 +465,7 @@ class TigerGraphDetector:
 
                 # Path: Shortest path (weighted positive)
                 try:
-                    res = _gdsl(client, "tg_shortest_ss_pos_wt", {"v_start": "", "v_target": "", "e_type": "SHARES_DEVICE", "weight_attr": "amount", "max_hops": 10})
+                    res = _gdsl(client, "tg_shortest_ss_pos_wt", {"v_start": "", "v_target": "", "e_type": "SHARES_DEVICE", "weight_attr": "amount", "max_hops": 20})
                     a = shortest_path_alert_from_gsql(res)
                     if a: alerts.append(a)
                 except httpx.HTTPError as exc:
@@ -587,7 +587,7 @@ class TigerGraphDetector:
                     res = _gdsl(
                         client,
                         "circularFunds",
-                        {"min_total": 50000.0, "max_hops": 6},
+                        {"min_total": 50000.0, "max_hops": 20},
                     )
                     a = circular_funds_alert_from_gsql(res)
                     if a: alerts.append(a)
@@ -611,7 +611,7 @@ class TigerGraphDetector:
                     res = _gdsl(
                         client,
                         "fundsPathTrace",
-                        {"start_id": "", "start_ts": "1970-01-01T00:00:00Z", "max_hops": 5, "path_limit": 200},
+                        {"start_id": "", "start_ts": "1970-01-01T00:00:00Z", "max_hops": 20, "path_limit": 200},
                     )
                     a = funds_path_trace_alert_from_gsql(res)
                     if a: alerts.append(a)

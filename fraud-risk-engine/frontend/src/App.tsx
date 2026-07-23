@@ -9,8 +9,9 @@ import { PaySimView } from './pages/PaySimView';
 import { MedGraphView } from './pages/MedGraphView';
 import { RobustnessView } from './pages/RobustnessView';
 import { FundsMonitorPanel } from './pages/FundsMonitorPanel';
+import { DistributedGraphView } from './pages/DistributedGraphView';
 
-type Page = 'design' | 'map' | 'load' | 'queries' | 'explore' | 'paysim' | 'medgraph' | 'robustness' | 'funds';
+type Page = 'design' | 'map' | 'load' | 'queries' | 'explore' | 'paysim' | 'medgraph' | 'robustness' | 'funds' | 'distributed';
 
 const NAV_ITEMS: { id: Page; label: string; icon: string }[] = [
   { id: 'design', label: 'Design Schema', icon: '⬡' },
@@ -22,6 +23,7 @@ const NAV_ITEMS: { id: Page; label: string; icon: string }[] = [
   { id: 'medgraph', label: 'MedGraph', icon: '✚' },
   { id: 'robustness', label: 'Graph Robustness', icon: '◊' },
   { id: 'funds', label: 'Funds Monitor', icon: '₣' },
+  { id: 'distributed', label: 'Distributed', icon: '⊞' },
 ];
 
 function App() {
@@ -38,6 +40,7 @@ function App() {
       case 'medgraph':    return <MedGraphView />;
       case 'robustness':  return <RobustnessView />;
       case 'funds':       return <FundsMonitorPanel />;
+      case 'distributed':  return <DistributedGraphView />;
     }
   };
 
@@ -135,7 +138,7 @@ function App() {
             <span className="status-dot status-dot-green" />
             <span>FraudRisk Graph</span>
           </div>
-          <div>v3.1.5 · Starter Kit</div>
+          <div>v3.2.0 · Starter Kit</div>
         </div>
       </aside>
 

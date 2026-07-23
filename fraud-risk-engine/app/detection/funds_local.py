@@ -76,7 +76,7 @@ def trace_funds_paths(
     *,
     start_id: str = "",
     start_ts: str = "",
-    max_hops: int = 5,
+    max_hops: int = 20,
     max_paths: int = 200,
 ) -> dict:
     """Trace all funds-flow paths from ``start_id`` within 1..max_hops.
@@ -154,10 +154,10 @@ def find_circular_funds(
     ds: GeneratedDataset,
     *,
     min_total: float = 50000.0,
-    max_hops: int = 6,
+    max_hops: int = 20,
     min_hops: int = 3,
 ) -> dict:
-    """Account-centric 3..6 hop circular paths (laundering ring signature).
+    """Account-centric 3..20 hop circular paths (laundering ring signature).
 
     Returns a dict shaped to match the GSQL PRINT payload.
         {

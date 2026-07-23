@@ -311,6 +311,281 @@ function PatientList({
 }
 
 // ---------------------------------------------------------------------------
+// GSQL Query Panel — run TigerGraph queries against the MedGraph schema
+// ---------------------------------------------------------------------------
+
+interface GSQLQueryMeta {
+  name: string;
+  full_name: string;
+  description: string;
+  gsql: string;
+  category_label: string;
+}
+
+interface GSQLRunResult {
+  ok: boolean;
+  source: string;
+  query: string;
+  results: Record<string, unknown>[];
+  total: number;
+  note?: string;
+}
+
+function GSQLQueryPanel({ onLoad }: { onLoad: (n: MedGraphNode | null) => void }) {
+  const [queryList, setQueryList] = useState<Record<string, GSQLQueryMeta[]>>({});
+  const [activeCat, setActiveCat] = useState('');
+  const [selectedQ, setSelectedQ] = useState('');
+  const [seedId, setSeedId] = useState('PAT-00000001');
+  const [maxHops, setMaxHops] = useState(5);
+  const [maxResults, setMaxResults] = useState(50);
+  const [loading, setLoading] = useState(false);
+  const [result, setResult] = useState<GSQLRunResult | null>(null);
+  const [error, setError] = useState('');
+  const [expanded, setExpanded] = useState(false);
+  const [tab, setTab] = useState<'preset' | 'custom'>('preset');
+  const [customGsql, setCustomGsql] = useState('');
+
+  // Load query catalogue on first expand
+  useEffect(() => {
+    if (!expanded || Object.keys(queryList).length > 0) return;
+    fetch('/api/medgraph/gsql_queries')
+      .then(r => r.ok ? r.json() : null)
+      .then(data => {
+        if (data) {
+          setQueryList(data.categories);
+          const cats = Object.keys(data.categories);
+          if (cats.length) {
+            setActiveCat(cats[0]);
+            if (data.categories[cats[0]]?.length) {
+              setSelectedQ(data.categories[cats[0]][0].name);
+            }
+          }
+        }
+      })
+      .catch(() => {});
+  }, [expanded]);
+
+  const run = async () => {
+    if (!selectedQ) return;
+    setLoading(true);
+    setError('');
+    setResult(null);
+    try {
+      const u = `/api/medgraph/gsql_run?query_name=${encodeURIComponent(selectedQ)}` +
+        `&seed_id=${encodeURIComponent(seedId)}&max_hops=${maxHops}&max_results=${maxResults}`;
+      const r = await fetch(u, { method: 'POST' });
+      const body = await r.json();
+      if (!r.ok) throw new Error(body.detail || `HTTP ${r.status}`);
+      setResult(body);
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const cats = Object.keys(queryList);
+  const queries = activeCat ? (queryList[activeCat] || []) : [];
+  const resultKeys = result?.results?.[0] ? Object.keys(result.results[0]) : [];
+
+  return (
+    <div style={{ borderTop: '1px solid var(--tg-dark-border)' }}>
+      <div
+        onClick={() => setExpanded(x => !x)}
+        style={{
+          padding: '10px 14px', cursor: 'pointer', fontSize: 11,
+          color: 'var(--tg-text-muted)', textTransform: 'uppercase',
+          letterSpacing: '0.5px', userSelect: 'none',
+          display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+        }}
+      >
+        <span>GSQL Query</span>
+        <span style={{ fontSize: 10 }}>{expanded ? '▼' : '▶'}</span>
+      </div>
+      {expanded && (
+        <div style={{ padding: '0 14px 12px' }}>
+          {/* Tabs */}
+          <div style={{ display: 'flex', gap: 4, marginBottom: 8 }}>
+            <button onClick={() => setTab('preset')}
+              style={{
+                padding: '3px 10px', fontSize: 10, borderRadius: 3,
+                background: tab === 'preset' ? 'var(--tg-accent, #6ad1ff)' : 'transparent',
+                border: '1px solid var(--tg-dark-border)',
+                color: tab === 'preset' ? '#0d1117' : 'var(--tg-text-muted)',
+                cursor: 'pointer', fontWeight: tab === 'preset' ? 600 : 400,
+              }}>
+              Preset Queries
+            </button>
+            <button onClick={() => setTab('custom')}
+              style={{
+                padding: '3px 10px', fontSize: 10, borderRadius: 3,
+                background: tab === 'custom' ? 'var(--tg-accent, #6ad1ff)' : 'transparent',
+                border: '1px solid var(--tg-dark-border)',
+                color: tab === 'custom' ? '#0d1117' : 'var(--tg-text-muted)',
+                cursor: 'pointer', fontWeight: tab === 'custom' ? 600 : 400,
+              }}>
+              Custom GSQL
+            </button>
+          </div>
+
+          {tab === 'preset' && (
+          <>
+          {/* Category tabs */}
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, marginBottom: 8 }}>
+            {cats.map(c => (
+              <button key={c} onClick={() => { setActiveCat(c); setSelectedQ(queryList[c]?.[0]?.name || ''); }}
+                style={{
+                  padding: '2px 8px', fontSize: 10, borderRadius: 3,
+                  background: activeCat === c ? 'var(--tg-accent, #6ad1ff)' : 'transparent',
+                  border: '1px solid var(--tg-dark-border)',
+                  color: activeCat === c ? '#0d1117' : 'var(--tg-text-muted)',
+                  cursor: 'pointer', fontWeight: activeCat === c ? 600 : 400,
+                }}>
+                {queryList[c]?.[0]?.category_label || c}
+              </button>
+            ))}
+          </div>
+
+          {/* Query select */}
+          <select value={selectedQ} onChange={e => setSelectedQ(e.target.value)}
+            style={inputStyleS}>
+            {queries.map(q => (
+              <option key={q.name} value={q.name}>{q.name.replace('tg_', '')} — {q.description.slice(0, 50)}</option>
+            ))}
+          </select>
+
+          {/* Parameters */}
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6, marginTop: 6 }}>
+            <div>
+              <div style={{ fontSize: 9, color: 'var(--tg-text-muted)', marginBottom: 2 }}>Seed ID</div>
+              <input value={seedId} onChange={e => setSeedId(e.target.value)} style={inputStyleS} />
+            </div>
+            <div>
+              <div style={{ fontSize: 9, color: 'var(--tg-text-muted)', marginBottom: 2 }}>Max hops</div>
+              <input type="number" value={maxHops} min={1} max={20}
+                onChange={e => setMaxHops(Number(e.target.value))} style={inputStyleS} />
+            </div>
+          </div>
+
+          <button onClick={run} disabled={loading || !selectedQ}
+            style={{
+              marginTop: 8, width: '100%', padding: '5px 8px', fontSize: 11,
+              borderRadius: 4, cursor: loading ? 'wait' : 'pointer',
+              background: loading ? 'var(--tg-dark-bg2)' : 'var(--tg-accent, #6ad1ff)',
+              border: 'none', color: '#0d1117', fontWeight: 600,
+            }}>
+            {loading ? 'Running…' : 'Run GSQL Query'}
+          </button>
+          </>
+          )}
+
+          {tab === 'custom' && (
+          <>
+          <div style={{ fontSize: 9, color: 'var(--tg-text-muted)', marginBottom: 4 }}>
+            Enter GSQL (e.g. INTERPRET QUERY / INSTALLED QUERY name)
+          </div>
+          <textarea
+            value={customGsql}
+            onChange={e => setCustomGsql(e.target.value)}
+            placeholder={"INTERPRET QUERY () FOR GRAPH MedGraph {\n  PRINT 1;\n}"}
+            rows={6}
+            style={{
+              ...inputStyleS,
+              resize: 'vertical',
+              lineHeight: 1.5,
+              fontFamily: 'JetBrains Mono, Consolas, monospace',
+              fontSize: 10,
+              padding: '6px 8px',
+              background: 'var(--tg-dark-bg2)',
+              color: 'var(--tg-text-main)',
+            }}
+          />
+          <button
+            onClick={async () => {
+              if (!customGsql.trim()) return;
+              setLoading(true); setError(''); setResult(null);
+              try {
+                const r = await fetch('/api/medgraph/gsql_custom', {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ gsql: customGsql }),
+                });
+                const body = await r.json();
+                if (!r.ok) throw new Error(body.detail || `HTTP ${r.status}`);
+                setResult(body as GSQLRunResult);
+              } catch (e: unknown) {
+                setError(e instanceof Error ? e.message : String(e));
+              } finally {
+                setLoading(false);
+              }
+            }}
+            disabled={loading || !customGsql.trim()}
+            style={{
+              marginTop: 6, width: '100%', padding: '5px 8px', fontSize: 11,
+              borderRadius: 4, cursor: loading ? 'wait' : 'pointer',
+              background: loading ? 'var(--tg-dark-bg2)' : 'var(--tg-accent, #6ad1ff)',
+              border: 'none', color: '#0d1117', fontWeight: 600,
+            }}>
+            {loading ? 'Running…' : 'Run Custom GSQL'}
+          </button>
+          </>
+          )}
+
+          {error && (
+            <div style={{ marginTop: 6, fontSize: 10, color: '#ff5d6c' }}>{error}</div>
+          )}
+
+          {result && (
+            <div style={{ marginTop: 8 }}>
+              <div style={{ fontSize: 9, color: 'var(--tg-text-muted)', marginBottom: 4 }}>
+                {result.source === 'tigergraph' ? '🐯 TigerGraph live' : '🧪 Demo mode'} —
+                {result.total} result{result.total !== 1 ? 's' : ''}
+              </div>
+              {result.note && (
+                <div style={{ fontSize: 9, color: '#ffd866', marginBottom: 4 }}>{result.note}</div>
+              )}
+              <div style={{ maxHeight: 200, overflowY: 'auto' }}>
+                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 9 }}>
+                  <thead>
+                    <tr>
+                      {resultKeys.map(k => (
+                        <th key={k} style={{ padding: '2px 4px', color: 'var(--tg-text-muted)',
+                          textAlign: 'left', borderBottom: '1px solid var(--tg-dark-border)',
+                          whiteSpace: 'nowrap' }}>{k}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {result.results.slice(0, 30).map((row, i) => (
+                      <tr key={i}>
+                        {resultKeys.map(k => (
+                          <td key={k} style={{ padding: '2px 4px', color: 'var(--tg-text-secondary)',
+                            fontFamily: 'JetBrains Mono, monospace', borderBottom: '1px solid var(--tg-dark-border)',
+                            maxWidth: 120, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                            {String((row as Record<string, unknown>)[k] ?? '')}
+                          </td>
+                        ))}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+const inputStyleS: React.CSSProperties = {
+  width: '100%', padding: '4px 6px', fontSize: 10,
+  borderRadius: 3, border: '1px solid var(--tg-dark-border)',
+  background: 'var(--tg-dark-bg2)', color: 'var(--tg-text-main)',
+  fontFamily: 'JetBrains Mono, monospace', boxSizing: 'border-box',
+};
+
+// ---------------------------------------------------------------------------
 // Main view
 // ---------------------------------------------------------------------------
 
@@ -493,6 +768,8 @@ export function MedGraphView() {
             ))}
           </>
         )}
+
+        <GSQLQueryPanel onLoad={handleNodeClick} />
       </div>
     </div>
   );

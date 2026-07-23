@@ -211,7 +211,7 @@ def bfs_identity(
     account_id: str,
     ds: "GeneratedDataset",
     *,
-    max_hops: int = 3,
+    max_hops: int = 20,
     max_nodes: int = 500,
 ) -> GraphSubgraph:
     """Walk the identity graph starting from ``account_id``.
@@ -428,7 +428,7 @@ def bfs_funds(
     account_id: str,
     ds: "GeneratedDataset",
     *,
-    max_hops: int = 4,
+    max_hops: int = 20,
     max_nodes: int = 500,
     direction: Literal["out", "in", "both"] = "both",
     include_merchants: bool = False,

@@ -409,6 +409,124 @@ function CirclesViz({ byAccount, ringCount, accountIds }: CirclesVizProps) {
 }
 
 // ===========================================================================
+// LDBC SNB SF10 Social Network view
+// ===========================================================================
+
+interface LDBCStats {
+  sf: number;
+  seed: number;
+  counts: Record<string, number>;
+  nodes: { id: number; label: string; city: number }[];
+  edges: { source: number; target: number }[];
+}
+
+function SF10View() {
+  const [data, setData] = useState<LDBCStats | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
+  const [sf, setSf] = useState(0.1);
+  const [seed, setSeed] = useState(42);
+  const svgRef = useRef<SVGSVGElement>(null);
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    setError('');
+    try {
+      const r = await fetch(`/api/ldbc_snb/stats?sf=${sf}&seed=${seed}`);
+      if (!r.ok) throw new Error(`HTTP ${r.status}`);
+      setData(await r.json());
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setLoading(false);
+    }
+  }, [sf, seed]);
+
+  useEffect(() => { load(); }, [load]);
+
+  // D3 force-directed social graph
+  useEffect(() => {
+    if (!data || !svgRef.current) return;
+    const svg = d3.select(svgRef.current);
+    svg.selectAll('*').remove();
+    const W = svgRef.current.clientWidth || 600;
+    const H = svgRef.current.clientHeight || 420;
+    const g = svg.append('g');
+    svg.call(d3.zoom<SVGSVGElement, unknown>().scaleExtent([0.2, 4]).on('zoom', (e) => g.attr('transform', e.transform.toString())));
+    const nodes = data.nodes.map(n => ({ ...n }));
+    const links = data.edges.map(e => ({ ...e }));
+    const color = d3.scaleOrdinal(d3.schemeTableau10);
+    const sim = d3.forceSimulation(nodes as d3.SimulationNodeDatum[])
+      .force('link', d3.forceLink(links).id((d: any) => d.id).distance(60).strength(0.4))
+      .force('charge', d3.forceManyBody().strength(-120))
+      .force('center', d3.forceCenter(W / 2, H / 2))
+      .force('collision', d3.forceCollide().radius(12));
+    const link = g.append('g').selectAll('line').data(links).join('line')
+      .attr('stroke', '#3a4055').attr('stroke-width', 1).attr('stroke-opacity', 0.5);
+    const node = g.append('g').selectAll('circle').data(nodes).join('circle')
+      .attr('r', 8)
+      .attr('fill', (d: any) => color(String(d.city % 10)))
+      .attr('stroke', '#0f1115').attr('stroke-width', 1);
+    node.append('title').text((d: any) => d.label);
+    sim.on('tick', () => {
+      link.attr('x1', (d: any) => d.source.x).attr('y1', (d: any) => d.source.y)
+          .attr('x2', (d: any) => d.target.x).attr('y2', (d: any) => d.target.y);
+      node.attr('cx', (d: any) => d.x).attr('cy', (d: any) => d.y);
+    });
+    return () => { sim.stop(); };
+  }, [data]);
+
+  const c = data?.counts;
+  return (
+    <div style={{ display: 'flex', gap: 16 }}>
+      {/* Controls + stats */}
+      <div style={{ width: 220, flexShrink: 0 }}>
+        <div style={{ marginBottom: 10 }}>
+          <div style={{ fontSize: 10, color: 'var(--tg-text-muted)', marginBottom: 4 }}>Scale factor (SF)</div>
+          <input type="range" min={0.01} max={1} step={0.01} value={sf}
+            onChange={e => setSf(Number(e.target.value))} style={{ width: '100%' }} />
+          <div style={{ fontSize: 11, color: 'var(--tg-text-main)', fontFamily: 'JetBrains Mono, monospace' }}>SF {sf.toFixed(2)}</div>
+        </div>
+        <div style={{ marginBottom: 10 }}>
+          <div style={{ fontSize: 10, color: 'var(--tg-text-muted)', marginBottom: 4 }}>Seed</div>
+          <input type="number" value={seed} onChange={e => setSeed(Number(e.target.value))}
+            style={{ width: '100%', padding: '4px 6px', fontSize: 11, borderRadius: 3, border: '1px solid var(--tg-dark-border)', background: 'var(--tg-dark-bg)', color: 'var(--tg-text-main)' }} />
+        </div>
+        <button onClick={load} disabled={loading}
+          style={{ width: '100%', padding: '5px 8px', fontSize: 11, borderRadius: 4, cursor: loading ? 'wait' : 'pointer', background: 'var(--tg-accent, #6ad1ff)', border: 'none', color: '#0d1117', fontWeight: 600, marginBottom: 10 }}>
+          {loading ? 'Loading…' : 'Regenerate'}
+        </button>
+        {error && <div style={{ fontSize: 10, color: '#ff5d6c', marginBottom: 8 }}>{error}</div>}
+        {c && (
+          <div style={{ fontSize: 10, color: 'var(--tg-text-muted)', fontFamily: 'JetBrains Mono, monospace' }}>
+            {[['Person', c.person], ['Post', c.post], ['Comment', c.comment], ['Forum', c.forum],
+              ['Tag', c.tag], ['KNOWS', c.knows], ['LIKES', c.likes]].map(([k, v]) => (
+              <div key={k} style={{ display: 'flex', justifyContent: 'space-between', padding: '2px 0' }}>
+                <span>{k}</span><span style={{ color: 'var(--tg-text-main)' }}>{Number(v).toLocaleString()}</span>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* D3 social graph */}
+      <div style={{ flex: 1 }}>
+        {loading && <div style={{ textAlign: 'center', padding: 40, color: 'var(--tg-text-muted)' }}>Loading LDBC SNB…</div>}
+        {!loading && !data && <div style={{ textAlign: 'center', padding: 40, color: 'var(--tg-text-muted)' }}>Click Regenerate</div>}
+        {!loading && data && (
+          <>
+            <div style={{ fontSize: 10, color: 'var(--tg-text-muted)', marginBottom: 4 }}>
+              LDBC SNB SF{sf.toFixed(2)} — {data.nodes.length} persons · {data.edges.length} KNOWS edges
+            </div>
+            <svg ref={svgRef} style={{ width: '100%', height: 420, display: 'block', background: 'var(--tg-dark-bg2, #0d1117)', borderRadius: 6 }} />
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ===========================================================================
 // Main panel
 // ===========================================================================
 
@@ -417,6 +535,9 @@ export function FundsMonitorPanel() {
   const [needsBuild, setNeedsBuild] = useState(false);
   const [buildError, setBuildError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+
+  // Dataset knobs
+  const [scaleFactor, setScaleFactor] = useState(1.0);
 
   // Detector knobs
   const [seedAccount, setSeedAccount] = useState('A000001');
@@ -429,7 +550,7 @@ export function FundsMonitorPanel() {
   const [pathRun, setPathRun] = useState<DetectorRun>({ detector: 'path', alert: null, result: null, loading: false, error: null });
   const [circlesRun, setCirclesRun] = useState<DetectorRun>({ detector: 'circles', alert: null, result: null, loading: false, error: null });
   const [burstRun, setBurstRun] = useState<DetectorRun>({ detector: 'burst', alert: null, result: null, loading: false, error: null });
-  const [selected, setSelected] = useState<'path' | 'circles' | 'burst' | null>(null);
+  const [selected, setSelected] = useState<'path' | 'circles' | 'burst' | 'sf10' | null>(null);
 
   // Monitor
   const [monitor, setMonitor] = useState<MonitorStatus | null>(null);
@@ -491,7 +612,7 @@ export function FundsMonitorPanel() {
   const buildDataset = useCallback(async () => {
     setBusy(true); setBuildError(null);
     try {
-      const r = await fetch('/api/dataset', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({}) });
+      const r = await fetch('/api/dataset', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ scale_factor: scaleFactor }) });
       if (!r.ok) {
         const body = await r.json().catch(() => ({ detail: 'HTTP ' + r.status }));
         throw new Error(body.detail || 'HTTP ' + r.status);
@@ -503,7 +624,7 @@ export function FundsMonitorPanel() {
     } finally {
       setBusy(false);
     }
-  }, []);
+  }, [scaleFactor]);
 
   // Run the three detectors in parallel. Each updates its own slot.
   const runDetectors = useCallback(async () => {
@@ -581,11 +702,12 @@ export function FundsMonitorPanel() {
       if (monitorCfg.webhook_url) u.set('webhook_url', monitorCfg.webhook_url);
       u.set('dry_run', String(monitorCfg.dry_run));
       if (monitorCfg.dataset_seed) u.set('dataset_seed', monitorCfg.dataset_seed);
+      u.set('scale_factor', String(scaleFactor));
       const r = await fetch('/api/funds/monitor/start?' + u.toString(), { method: 'POST' });
       if (r.ok) await refreshMonitor();
     } catch { /* ignore */ }
     setMonitorBusy(false);
-  }, [monitorCfg, refreshMonitor]);
+  }, [monitorCfg, refreshMonitor, scaleFactor]);
 
   const stopMonitor = useCallback(async () => {
     setMonitorBusy(true);
@@ -655,6 +777,22 @@ export function FundsMonitorPanel() {
           {buildError && (
             <div style={{ fontSize: 11, color: '#ff5d6c', marginBottom: 8 }}>{buildError}</div>
           )}
+          <div style={{ marginBottom: 8 }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 }}>
+              <span style={{ fontSize: 11, color: 'var(' + DD + 'tg-text-muted)' }}>Scale factor</span>
+              <span style={{ fontSize: 12, fontFamily: 'JetBrains Mono, monospace', color: 'var(' + DD + 'tg-text-primary)' }}>
+                SF {scaleFactor.toFixed(1)}
+              </span>
+            </div>
+            <input
+              type="range" min={1} max={10} step={0.5} value={scaleFactor}
+              onChange={e => setScaleFactor(Number(e.target.value))}
+              style={{ width: '100%', cursor: 'pointer' }}
+            />
+            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 10, color: 'var(' + DD + 'tg-text-muted)' }}>
+              <span>SF1</span><span>SF5</span><span>SF10</span>
+            </div>
+          </div>
           <div style={{ display: 'flex', gap: 6 }}>
             <button onClick={buildDataset} disabled={busy} style={btnStyle(busy, '#6ad1ff')}>
               {busy ? 'Building…' : (datasetReady ? 'Rebuild' : 'Build dataset')}
@@ -786,6 +924,22 @@ export function FundsMonitorPanel() {
                 </tr>
               );
             })}
+            {/* SF10 tab row */}
+            <tr onClick={() => setSelected('sf10')}
+              style={{
+                cursor: 'pointer',
+                background: selected === 'sf10' ? 'rgba(45,156,219,0.06)' : 'transparent',
+                borderLeft: '3px solid ' + (selected === 'sf10' ? '#50e3c2' : 'transparent'),
+              }}>
+              <Td><span style={{ fontSize: 10, background: '#50e3c2', color: '#0d1117', padding: '2px 6px', borderRadius: 3, fontWeight: 700 }}>LDBC</span></Td>
+              <Td><span style={{ fontSize: 10, color: 'var(' + DD + 'tg-text-muted)' }}>benchmark</span></Td>
+              <Td>LDBC SNB SF10 Social Network</Td>
+              <Td mono style={{ textAlign: 'right', color: 'var(' + DD + 'tg-text-muted)' }}>—</Td>
+              <Td mono style={{ textAlign: 'right', color: 'var(' + DD + 'tg-text-muted)' }}>—</Td>
+              <Td mono style={{ textAlign: 'right', color: 'var(' + DD + 'tg-text-muted)' }}>
+                {selected === 'sf10' ? 'viewing ▸' : 'click →'}
+              </Td>
+            </tr>
           </tbody>
         </table>
 
@@ -793,10 +947,12 @@ export function FundsMonitorPanel() {
           {selected && (
             <div style={{ marginTop: 22 }}>
               <h3 style={{ fontSize: 14, fontWeight: 600, color: 'var(' + DD + 'tg-text-primary)', marginBottom: 10 }}>
-                {selected === 'path' ? 'Multi-hop path trace' : selected === 'circles' ? 'Circular funds rings' : 'Burst-amount edges'}
-                <span style={{ marginLeft: 8, fontSize: 11, color: 'var(' + DD + 'tg-text-muted)' }}>
-                  [{KIND_LABELS[(selected === 'path' ? pathRun : selected === 'circles' ? circlesRun : burstRun).alert?.kind || ''] || '—'}]
-                </span>
+                {selected === 'path' ? 'Multi-hop path trace' : selected === 'circles' ? 'Circular funds rings' : selected === 'burst' ? 'Burst-amount edges' : 'LDBC SNB Social Network'}
+                {selected !== 'sf10' && (
+                  <span style={{ marginLeft: 8, fontSize: 11, color: 'var(' + DD + 'tg-text-muted)' }}>
+                    [{KIND_LABELS[(selected === 'path' ? pathRun : selected === 'circles' ? circlesRun : burstRun).alert?.kind || ''] || '—'}]
+                  </span>
+                )}
               </h3>
               {selected === 'path' && (
                 <PathViz paths={(pathRun.result as FundsPathResult | null)?.results?.[0]?.paths || []} />
@@ -811,6 +967,7 @@ export function FundsMonitorPanel() {
               {selected === 'burst' && (
                 <BurstScatter rows={(burstRun.result as FundsBurstResult | null)?.results?.[0]?.suspicious || []} />
               )}
+              {selected === 'sf10' && <SF10View />}
             </div>
           )}
       </main>

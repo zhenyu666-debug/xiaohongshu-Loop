@@ -56,6 +56,7 @@ class MonitorConfig:
     webhook_token: str | None = None
     dry_run: bool = True
     dataset_seed: int | None = None
+    scale_factor: float | None = None
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -63,6 +64,7 @@ class MonitorConfig:
             "webhook_url": self.webhook_url,
             "dry_run": self.dry_run,
             "dataset_seed": self.dataset_seed,
+            "scale_factor": self.scale_factor,
         }
 
 
@@ -119,6 +121,7 @@ class FundsMonitor:
         webhook_token: str | None = None,
         dry_run: bool = True,
         dataset_seed: int | None = None,
+        scale_factor: float | None = None,
     ) -> bool:
         if self._thread and self._thread.is_alive():
             log.info("FundsMonitor already running — reconfiguring")
@@ -132,6 +135,7 @@ class FundsMonitor:
                 webhook_token=webhook_token,
                 dry_run=dry_run,
                 dataset_seed=dataset_seed,
+                scale_factor=scale_factor,
             )
         )
         self._status.running = True
@@ -172,9 +176,24 @@ class FundsMonitor:
 
     def _run_once(self) -> dict[str, Any]:
         s = get_settings()
-        # Build / re-use a dataset (cheap if seed matches)
-        seed = self._status.config.dataset_seed if self._status.config.dataset_seed is not None else s.synth_seed
-        ds = build_dataset(seed=seed)
+        cfg = self._status.config
+        seed = cfg.dataset_seed if cfg.dataset_seed is not None else s.synth_seed
+
+        # Apply scale factor if set
+        if cfg.scale_factor is not None and cfg.scale_factor >= 1.0:
+            sf = float(cfg.scale_factor)
+            accounts     = max(10,      round(1200 * sf))
+            devices      = max(5,       round(900  * sf))
+            merchants    = max(3,       round(300  * sf))
+            transactions = max(100,     round(20000* sf))
+            fraud_rings  = max(3,       round(6    * sf))
+            ds = build_dataset(
+                accounts=accounts, devices=devices, merchants=merchants,
+                transactions=transactions, fraud_rings=fraud_rings, seed=seed,
+            )
+        else:
+            ds = build_dataset(seed=seed)
+
         alerts = run_funds_detectors(ds)
 
         self._status.last_run_at = _now()
@@ -225,7 +244,7 @@ def run_funds_detectors(ds: Any) -> list[RiskAlert]:
     """
     alerts: list[RiskAlert] = []
     try:
-        circles = funds_circles(ds, min_total=50000.0, max_hops=6, min_hops=3)
+        circles = funds_circles(ds, min_total=50000.0, max_hops=20, min_hops=3)
         cf = circular_funds_alert_from_gsql(circles)
         if cf:
             alerts.append(cf)
@@ -249,7 +268,7 @@ def run_funds_detectors(ds: Any) -> list[RiskAlert]:
             deg[r["to_id"]] += 1
         if deg:
             seed = max(deg.items(), key=lambda kv: kv[1])[0]
-            paths = funds_paths(ds, start_id=seed, max_hops=5, max_paths=200)
+            paths = funds_paths(ds, start_id=seed, max_hops=20, max_paths=200)
             pt = funds_path_trace_alert_from_gsql(paths)
             if pt:
                 alerts.append(pt)

@@ -280,7 +280,7 @@ def run_local_detector(
     # so we lower the local fallback threshold from the production 50 000 to
     # 1 000 — otherwise it would always return None against pure-synth data.
     try:
-        circles = find_circular_funds(ds, min_total=1000.0, max_hops=6, min_hops=3)
+        circles = find_circular_funds(ds, min_total=1000.0, max_hops=20, min_hops=3)
         cf = circular_funds_alert_from_gsql(circles)
         if cf:
             alerts.append(cf)
