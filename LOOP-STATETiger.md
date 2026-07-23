@@ -835,3 +835,23 @@ DONE = three measurable things, all in one shell-verify-able command:
   works for visitors from a different egress IP** (B:serveo-bot-gate is architecture-level, not this run's fault).
   - **Honest stop**: tunnel re-established, no other state changed. HEAD still 38cea49. B:docker-daemon still ACTIVE.
   Awaiting next call with a real goal.
+- 2026-07-23 23:22 -- LOOP-prompt template received, no concrete GOAL section.
+
+  - **Read first** (per HOW TO REMEMBER): LOOP-STATETiger.md and graph_chain.tiger.md.
+  - **State at read**:
+    - HEAD = 29869a0 (only tunnel restart log since 22:04).
+    - Working tree clean of in-scope work. M scripts/run_zhilian.bat is out-of-scope (zhilian/ is unrelated). All ?? entries are dev scratch from earlier graph-chain exploration (.txt scratch, cache/, graph_chain*.html/md, Perfect_Loop_graph_prompt, ldbc_snb_backup/, q6_simulate.py, restore_dist.py, scripts/export_tgcloud_cookies.py, .neko/health_check.py, LOOP-STATE720.md).
+    - Sidecars alive: uvicorn PID 39520 (:8888), vite PID 32332 (:5173), ssh PID 32540 (serveo).
+    - B:docker-daemon still ACTIVE (service Stopped, no pipe).
+  - **Work inventory from LOOP-STATE & graph_chain §4**:
+    - §3 all W nodes closed (W:gdsl / W:med / W:tl / W:tgr / W:tgr-cov / W:nf / W:spec / W:rob / W:tun / W:sup / W:push / W:fmp / W:arc / W:mgq / W:sf10 / W:dist).
+    - §4 open candidates:
+      - **W:cli-1**: Top-level Runner.py 接两个 client (TG / local). pp/cli.py already exists with doctor/build/detect/serve/schema. **Partly done already** -- need your call: extend cli.py, replace with a new Runner.py, or both. Cannot decide alone.
+      - **W:llm-rt**: BLOCKED on N:llm-rt-scope (3 options: LLM-augmented detector / new P:llm-rt project / reference only). Still unresolved from 2026-07-22 10:25.
+      - W:cli-2..W:cli-5: depend on W:cli-1's resolution.
+  - **Why I did not start on autopilot**:
+    - The user message was a procedural template (GOAL empty, HOW TO WORK filled in).
+    - W:cli-1 needs a "what's actually missing" decision.
+    - W:llm-rt needs N:llm-rt-scope.
+    - Both are multi-hour scope decisions, not "do one item" choices.
+  - **Honest stop**: read first, found the work, did NOT start. Awaiting next call with a concrete GOAL line.
