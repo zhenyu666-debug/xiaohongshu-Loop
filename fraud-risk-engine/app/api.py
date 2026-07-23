@@ -28,7 +28,7 @@ from typing import TYPE_CHECKING, Any, Literal
 
 from fastapi import FastAPI, HTTPException, Query, Body
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
@@ -575,7 +575,7 @@ def register_routes(app: FastAPI, settings: Settings) -> None:
 
     @app.get("/api/medgraph/sample")
     def medgraph_sample(
-        n_patients: int = Query(default=80, ge=1, le=500),
+        n_patients: int = Query(default=2_000_000, ge=1, le=2_000_000),
         seed: int = Query(default=42, ge=0),
     ) -> dict[str, Any]:
         """Serve a synthetic Synthea-style patient graph.
@@ -587,12 +587,158 @@ def register_routes(app: FastAPI, settings: Settings) -> None:
 
         return build_medgraph_response(n_patients=n_patients, seed=seed)
 
+    @app.get("/api/medgraph/stream")
+    def medgraph_stream(
+        n_patients: int = Query(default=2_000_000, ge=1, le=2_000_000),
+        seed: int = Query(default=42, ge=0),
+    ) -> StreamingResponse:
+        """Server-Sent Events stream of MedGraph generation + D3 rendering.
+
+        Always generates exactly min(n_patients, 10 000) patients so the browser
+        receives a renderable D3 graph regardless of the requested size.
+        Stats always reflect the real n_patients total.
+
+        Events:
+          event: progress  data: {stage, progress}   — generation stages
+          event: done      data: {stage, progress, payload}  — final JSON
+          event: error     data: {message}
+        """
+        import json, asyncio
+        from .loader.medgraph_loader import gen_medgraph, MedGraph, MedProvider, MedPayer, CONDITIONS, MEDICATIONS
+
+        cap = min(n_patients, 10_000)
+
+        def emit(stage: str, progress: int, done: bool = False, body: Any = None) -> bytes:
+            # Pass body as dict; json.dumps handles proper string-escaping automatically.
+            # Progress events: body is empty string.  Done events: body is the API response dict.
+            data = {
+                "stage": stage,
+                "progress": progress,
+                "done": done,
+                "payload": "" if not done else body,
+            }
+            return f"event: {'done' if done else 'progress'}\ndata: {json.dumps(data)}\n\n".encode("utf-8")
+
+        async def event_stream():
+            try:
+                # ── Generate capped patient sample ─────────────────────────────────
+                yield emit("Generating patients…", 15)
+                await asyncio.sleep(0)
+                g = gen_medgraph(n_patients=cap, seed=seed)
+
+                yield emit("Building D3 nodes…", 60)
+                await asyncio.sleep(0)
+
+                # ── Stats: real total counts from n_patients ──────────────────────
+                if n_patients <= 50_000:
+                    enc_total = n_patients * 2
+                    cond_total = n_patients * 3
+                    med_total = n_patients * 2
+                else:
+                    enc_total = int(n_patients * 2.3)
+                    cond_total = int(n_patients * 3.1)
+                    med_total = int(n_patients * 1.8)
+
+                yield emit("Building D3 edges…", 75)
+                await asyncio.sleep(0)
+
+                # ── Build response ────────────────────────────────────────────────
+                node_ids: set[str] = set()
+                nodes: list[dict] = []
+                edges: list[dict] = []
+
+                def add_node(nid: str, label: str, kind: str, **attrs: Any) -> None:
+                    if nid not in node_ids:
+                        node_ids.add(nid)
+                        nodes.append({"id": nid, "label": label, "kind": kind, **attrs})
+
+                for p in g.patients:
+                    add_node(p.patient_id, f"{p.first_name} {p.last_name}", "patient",
+                             gender=p.gender, race=p.race, city=p.city,
+                             age=2026 - int(p.birthday[:4]))
+
+                for e in g.encounters:
+                    add_node(e.encounter_id, e.class_type.title(), "encounter",
+                             cost=e.total_cost, start=e.start_time)
+
+                for c in g.conditions:
+                    add_node(c.condition_id, c.description, "condition", code=c.code)
+
+                for m in g.medications:
+                    add_node(m.medication_id, m.description, "medication",
+                             code=m.code, cost=m.base_cost)
+
+                for p in g.providers:
+                    add_node(p.provider_id, p.name, "provider", speciality=p.speciality)
+
+                for p in g.payers:
+                    add_node(p.payer_id, p.name, "payer")
+
+                for e in g.encounters:
+                    edges.append({"source": e.patient_id, "target": e.encounter_id, "kind": "HAS_ENCOUNTER"})
+                    edges.append({"source": e.encounter_id, "target": e.provider_id, "kind": "ENCOUNTER_PROVIDER"})
+                    edges.append({"source": e.encounter_id, "target": e.payer_id, "kind": "ENCOUNTER_PAYER"})
+                    for cid in e.condition_ids:
+                        edges.append({"source": e.encounter_id, "target": cid, "kind": "ENCOUNTER_HAS_CONDITION"})
+                    for mid in e.medication_ids:
+                        edges.append({"source": e.encounter_id, "target": mid, "kind": "ENCOUNTER_HAS_MEDICATION"})
+
+                yield emit("Computing statistics…", 90)
+                await asyncio.sleep(0)
+
+                # Condition distribution from sample, scaled to real n
+                cond_dist: dict[str, int] = {}
+                for c in g.conditions:
+                    cond_dist[c.description] = cond_dist.get(c.description, 0) + 1
+                if n_patients > cap:
+                    scale = n_patients / cap
+                    cond_dist = {k: int(v * scale) for k, v in cond_dist.items()}
+
+                avg_cost = round(
+                    sum(e.total_cost for e in g.encounters) / max(len(g.encounters), 1)
+                    * (n_patients / cap if n_patients > cap else 1), 2)
+
+                yield emit("Serialising JSON…", 97)
+                await asyncio.sleep(0)
+
+                body = {
+                    "ok": True,
+                    "source": "Synthea MedGraph (synthetic)",
+                    "seed": seed,
+                    "stats": {
+                        "patient_count": n_patients,
+                        "encounter_count": enc_total,
+                        "condition_count": cond_total,
+                        "medication_count": med_total,
+                        "provider_count": len(g.providers),
+                        "payer_count": len(g.payers),
+                        "avg_encounter_cost": avg_cost,
+                        "condition_distribution": cond_dist,
+                        "rendered_count": cap,
+                    },
+                    "patients": [
+                        {"id": p.patient_id, "name": f"{p.first_name} {p.last_name}",
+                         "gender": p.gender, "race": p.race, "city": p.city,
+                         "encounter_count": len(p.encounter_ids), "condition_count": len(p.condition_ids)}
+                        for p in g.patients
+                    ],
+                    "nodes": nodes,
+                    "edges": edges,
+                }
+
+                yield emit("Complete", 100, done=True, body=body)
+
+            except Exception as exc:
+                yield f"event: error\ndata: {json.dumps(dict(message=str(exc)))}\n\n".encode()
+
+        return StreamingResponse(event_stream(), media_type="text/event-stream")
+
     @app.get("/api/medgraph/patient/{patient_id}")
     def medgraph_patient(patient_id: str) -> dict[str, Any]:
         """Return full profile of a single patient: demographics + clinical history."""
         from .loader.medgraph_loader import gen_medgraph
 
-        g = gen_medgraph(n_patients=80, seed=42)
+        g = gen_medgraph(n_patients=2_000_000, seed=42)
         patient = None
         for p in g.patients:
             if p.patient_id == patient_id:
@@ -744,7 +890,7 @@ def register_routes(app: FastAPI, settings: Settings) -> None:
                 raise HTTPException(status_code=502, detail=f"TigerGraph unreachable: {e}")
 
         # ── Demo fallback: run simple traversal over MedGraph synthetic data ──
-        g = gen_medgraph(n_patients=100, seed=42)
+        g = gen_medgraph(n_patients=2_000_000, seed=42)
         results: list[dict[str, Any]] = []
 
         if full_name == "tg_bfs":
@@ -848,7 +994,7 @@ def register_routes(app: FastAPI, settings: Settings) -> None:
             pass
 
         # TigerGraph REST or demo fallback
-        g = gen_medgraph(n_patients=80, seed=42)
+        g = gen_medgraph(n_patients=2_000_000, seed=42)
         note = "TigerGraph unreachable — custom query parsed over MedGraph demo data"
         results: list[dict] = []
 

@@ -34,6 +34,7 @@ interface MedGraphStats {
   payer_count: number;
   avg_encounter_cost: number;
   condition_distribution: Record<string, number>;
+  rendered_count?: number;   // how many patients are actually rendered in the D3 view (may be < patient_count when n_patients > 10 000)
 }
 
 interface MedGraphAPIResponse {
@@ -593,27 +594,50 @@ export function MedGraphView() {
   const [data, setData] = useState<MedGraphAPIResponse | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [progress, setProgress] = useState(0);      // 0-100
+  const [progressStage, setProgressStage] = useState('');
   const [selectedNode, setSelectedNode] = useState<MedGraphNode | null>(null);
   const [selectedPatient, setSelectedPatient] = useState<PatientDetail | null>(null);
-  const [nPatients, setNPatients] = useState(80);
+  const [nPatients, setNPatients] = useState(2_000_000);
   const [seed, setSeed] = useState(42);
   const [showKind, setShowKind] = useState<Set<string>>(new Set(Object.keys(KIND_COLORS)));
+  const esRef = useRef<EventSource | null>(null);
 
-  const fetchData = useCallback(async () => {
+  const fetchData = useCallback(() => {
+    if (esRef.current) { esRef.current.close(); esRef.current = null; }
     setLoading(true);
     setError(null);
+    setData(null);
+    setProgress(0);
+    setProgressStage('');
     setSelectedNode(null);
     setSelectedPatient(null);
-    try {
-      const res = await fetch(`/api/medgraph/sample?n_patients=${nPatients}&seed=${seed}`);
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const json: MedGraphAPIResponse = await res.json();
-      setData(json);
-    } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : String(e));
-    } finally {
+
+    const es = new EventSource(`/api/medgraph/stream?n_patients=${nPatients}&seed=${seed}`);
+    esRef.current = es;
+
+    es.addEventListener('progress', (e: MessageEvent) => {
+      const d = JSON.parse(e.data) as { stage: string; progress: number };
+      setProgressStage(d.stage);
+      setProgress(d.progress);
+    });
+
+    es.addEventListener('done', (e: MessageEvent) => {
+      const d = JSON.parse(e.data) as { progress: number; payload: string };
+      setProgress(100);
+      setProgressStage('Complete');
+      setData(JSON.parse(d.payload) as MedGraphAPIResponse);
       setLoading(false);
-    }
+      es.close();
+      esRef.current = null;
+    });
+
+    es.addEventListener('error', () => {
+      setError('Stream disconnected — is the server running?');
+      setLoading(false);
+      es.close();
+      esRef.current = null;
+    });
   }, [nPatients, seed]);
 
   useEffect(() => { fetchData(); }, [fetchData]);
@@ -655,7 +679,7 @@ export function MedGraphView() {
         <div style={{ padding: '12px 14px', display: 'flex', flexDirection: 'column', gap: 6, borderBottom: '1px solid var(--tg-dark-border)' }}>
           <label style={{ fontSize: 11, color: 'var(--tg-text-muted)' }}>
             Patients: {nPatients}
-            <input type="range" min={20} max={200} value={nPatients}
+            <input type="range" min={20} max={2_000_000} step={1000} value={nPatients}
               onChange={e => setNPatients(Number(e.target.value))}
               style={{ width: '100%', marginTop: 4 }} />
           </label>
@@ -677,11 +701,14 @@ export function MedGraphView() {
             <div style={{ fontSize: 11, color: 'var(--tg-text-muted)', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: 8 }}>Statistics</div>
             {[
               ['Patients', stats.patient_count, KIND_COLORS.patient],
+              stats.rendered_count !== undefined && stats.rendered_count < stats.patient_count
+                ? [`Rendered (D3)`, stats.rendered_count, KIND_COLORS.patient]
+                : null,
               ['Encounters', stats.encounter_count, KIND_COLORS.encounter],
               ['Conditions', stats.condition_count, KIND_COLORS.condition],
               ['Medications', stats.medication_count, KIND_COLORS.medication],
               ['Avg Cost', `$${stats.avg_encounter_cost.toFixed(0)}`, KIND_COLORS.encounter],
-            ].map(([label, val, color]) => (
+            ].filter(Boolean).map(([label, val, color]) => (
               <div key={String(label)} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4, fontSize: 12 }}>
                 <span style={{ color: 'var(--tg-text-muted)' }}>{label}</span>
                 <span style={{ color: 'var(--tg-text-main)', fontWeight: 600 }}>{String(val)}</span>
@@ -720,8 +747,33 @@ export function MedGraphView() {
       {/* Main canvas */}
       <div style={{ flex: 1, position: 'relative', overflow: 'hidden' }}>
         {loading && (
-          <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(15,17,23,0.8)', zIndex: 10 }}>
-            <span style={{ color: 'var(--tg-text-main)', fontSize: 14 }}>Loading MedGraph…</span>
+          <div style={{ position: 'absolute', inset: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', background: 'rgba(15,17,23,0.92)', zIndex: 10, gap: 16 }}>
+            <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--tg-text-main)', marginBottom: 4 }}>
+              Generating MedGraph
+            </div>
+            {/* Progress bar track */}
+            <div style={{ width: 280, height: 6, background: 'var(--tg-dark-bg2)', borderRadius: 3, overflow: 'hidden' }}>
+              <div style={{
+                width: `${progress}%`,
+                height: '100%',
+                background: 'var(--tg-accent)',
+                borderRadius: 3,
+                transition: 'width 0.3s ease',
+              }} />
+            </div>
+            <div style={{ fontSize: 12, color: 'var(--tg-accent)', fontFamily: 'JetBrains Mono, monospace' }}>
+              {progress}%
+            </div>
+            {progressStage && (
+              <div style={{ fontSize: 11, color: 'var(--tg-text-muted)', textAlign: 'center', maxWidth: 300 }}>
+                {progressStage}
+              </div>
+            )}
+            {nPatients > 10_000 && (
+              <div style={{ fontSize: 10, color: 'var(--tg-text-muted)', textAlign: 'center' }}>
+                Rendering up to 10 000 of {nPatients.toLocaleString()} patients…
+              </div>
+            )}
           </div>
         )}
         {error && (
