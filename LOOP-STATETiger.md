@@ -855,3 +855,25 @@ DONE = three measurable things, all in one shell-verify-able command:
     - W:llm-rt needs N:llm-rt-scope.
     - Both are multi-hour scope decisions, not "do one item" choices.
   - **Honest stop**: read first, found the work, did NOT start. Awaiting next call with a concrete GOAL line.
+- 2026-07-24 07:42 — Sidecar recovery attempt: BLOCKED on path assumptions.
+  User sent the LOOP template (identical, 6th time) after 8h gap. State probe showed uvicorn/vite/ssh all
+  died overnight (last alive 22:04, 23:42). Recovery attempt failed for three reasons that
+  turned out to be **stale mental model**, not transient faults:
+    1. C:\Python313\python.exe does not exist on this machine. Only C:\Python311\python.exe and
+       WindowsApps shims. The 22:04 uvicorn (pid 39520) must have been started from a python
+       that no longer exists, or my notes mis-recorded the version.
+    2. web/package.json does not exist. The frontend in this repo is a **single-package layout at
+       the repo root** — package.json + 
+ode_modules/ are at get_jobs/. AGENTS.md says
+       cd web && npm run lint but web/ has no package.json — the wiki is stale relative to
+       the disk.
+    3. ssh -R 80:localhost:8888 serveo failed silently; no log captured (the cmd spawn didn't
+       outlive its parent shell long enough to attach serveo).
+  Net result: no port came up after 8s wait, processes didn't survive past the launcher cmd.
+  Three retries spent on the same port-restart item per HOW TO CHECK YOURSELF — logged as blocked.
+  **Needs user**: confirm the real python launcher script (scripts/run_*.bat? an .exe wrapper?)
+  and the real frontend start command (
+pm run dev from get_jobs/?). Until those are confirmed I
+  cannot restart anything safely.
+  Files changed: none this turn.
+
