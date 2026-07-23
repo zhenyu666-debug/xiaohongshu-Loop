@@ -877,3 +877,33 @@ pm run dev from get_jobs/?). Until those are confirmed I
   cannot restart anything safely.
   Files changed: none this turn.
 
+
+- 2026-07-24 07:58 — W:cli-1 closed (commits 5b0f38e + 27db466).
+  **What landed**
+    - pp/runner.py: Runner Protocol, LocalRunner (wraps LocalDetector), RemoteRunner (wraps TigerGraphDetector + existing fallback), make_runner(client, dataset) factory, ClientKind enum {AUTO,LOCAL,TG}. 117 lines.
+    - pp/cli.py: cmd_detect rewritten to dispatch via make_runner() based on --client {auto,local,tg} flag. Default = uto. Subparser register fix (was double-registered detect). +21/-10 lines net.
+    - 	ests/test_runner.py: 8 tests, 126 lines, all green (14.67s). Coverage:
+      * make_runner dispatch (local/auto/tg)
+      * LocalRunner produces all 4 baseline alert kinds
+      * RemoteRunner fallback when RESTPP unreachable (monkeypatched ping)
+      * CLI main() accepts --client default + local; regression guard on doctor
+  **Decisions recorded (D:)**
+    - D:cli-1-default-auto: --client default = uto (TG first, fall back). User can force
+      local or tg with explicit flag. Forced-tg path is degraded without silent fallback.
+  **Bumps not in code, in attention**
+    - root .gitignore line 119 ignored 	est_runner.py as a pre-emptive rule from a prior
+      session — wrong call. Force-added via git add -f. May want to revisit that rule.
+    - test_medgraph.py has a pre-existing hang (likely in 	est_medgraph_sample_basic; 2M
+      patient synth per W:med). NOT introduced by W:cli-1; reproduces on clean tree.
+  **B:docker-daemon unchanged**
+    - W:cli-1 (a-d) requires zero docker. The TG fallback path was tested by monkeypatching
+      TigerGraphDetector.ping to False — full end-to-end without the daemon.
+    - Real docker-backed run will follow the user's DD restart decision (Clean/Purge data
+      or uninstall). Block stays open on user side.
+  **Manual CLI proof (wide path)**
+
+    python -m app.cli detect --client auto   # backend: local+fallback, 7 alerts, 4.3s
+    python -m app.cli detect --client local  # backend: local (no fallback)
+
+  Files modified: fraud-risk-engine/app/cli.py, +fraud-risk-engine/app/runner.py, +fraud-risk-engine/tests/test_runner.py
+
