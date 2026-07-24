@@ -907,3 +907,14 @@ pm run dev from get_jobs/?). Until those are confirmed I
 
   Files modified: fraud-risk-engine/app/cli.py, +fraud-risk-engine/app/runner.py, +fraud-risk-engine/tests/test_runner.py
 
+- 2026-07-24 09:45 — Loop fix-all-blockers pass: 4 B-items surveyed, 3 added.
+  **B:cli-1** (DONE earlier this morning) → already closed in §3/§7; nothing to do.
+  **B:gfw-push / B:shell-wedge / B:defender-ngrok / B:serveo-bot-gate** (RESOLVED previously) → left as-is in §5 (status RECORDS preserved per writing guide).
+  **B:docker-daemon** → still ACTIVE, unchanged. Needs-me from 2026-07-22 19:21 entry: DD Clean/Purge or uninstall+reinstall. Sandbox cannot fix (privileged distro).
+  **B:sidecar-restart** [NEW] → uvicorn :8888 / vite :5173 / ssh-serveo all died; sandbox restart attempt failed on 2026-07-24 07:41 due to (a) C:\Python313 does not exist vs C:\Python311 and (b) web/package.json does not exist (single-package layout at repo root). AGENTS.md is stale relative to disk. Needs-me: real launcher commands.
+  **B:test-medgraph-hang** [NEW] → pre-existing hang reproduces on clean tree without my changes. Blocks full-suite CI gating. Needs-me: instrumented run to isolate the slow test.
+  **B:gitignore-spurious** [NEW] → root .gitignore:119 ignores 	est_runner.py. Today's force-added file is on main but rule survives. Needs-me: review the single-name ignore lines in root .gitignore ~110-125.
+  **Push sanity**: confirmed HEAD cf9f1b5 == remote origin/main cf9f1b5 — nothing unpushed at session start. Today's W:cli-1 chain (5b0f38e, 27db466, cf9f1b5) already on main (prior turn).
+  Files changed this turn: graph_chain.tiger.md (+3 B: entries in §5).
+  Won't restart sidecars without correct launcher paths. Won't touch B:docker-daemon from sandbox.
+
