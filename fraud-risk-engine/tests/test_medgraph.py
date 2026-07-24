@@ -56,7 +56,9 @@ def test_medgraph_patient_detail() -> None:
     body = r.json()
     first_patient_id = body["patients"][0]["id"]
 
-    # Fetch detail for that patient
+    # Fetch detail for that patient. The endpoint default (10K) is shared
+    # across all gen sizes via seed=42 — the first 10 patient IDs are
+    # deterministic, so the patient lookup succeeds.
     r2 = c.get(f"/api/medgraph/patient/{first_patient_id}")
     assert r2.status_code == 200
     detail = r2.json()

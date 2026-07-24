@@ -734,11 +734,22 @@ def register_routes(app: FastAPI, settings: Settings) -> None:
         return StreamingResponse(event_stream(), media_type="text/event-stream")
 
     @app.get("/api/medgraph/patient/{patient_id}")
-    def medgraph_patient(patient_id: str) -> dict[str, Any]:
+    def medgraph_patient(
+        patient_id: str,
+        n_patients: int = Query(
+            default=10_000,
+            ge=1,
+            le=2_000_000,
+            description="Patient pool size to search. Default 10K because the endpoint "
+            "is a single-patient lookup and the seed-42 prefix is shared across "
+            "all generated sizes; tests use the default. Callers that need a "
+            "wider pool (e.g., 2M) can pass n_patients explicitly.",
+        ),
+    ) -> dict[str, Any]:
         """Return full profile of a single patient: demographics + clinical history."""
         from .loader.medgraph_loader import gen_medgraph
 
-        g = gen_medgraph(n_patients=2_000_000, seed=42)
+        g = gen_medgraph(n_patients=n_patients, seed=42)
         patient = None
         for p in g.patients:
             if p.patient_id == patient_id:
