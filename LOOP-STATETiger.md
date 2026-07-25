@@ -932,3 +932,16 @@ _patients query param, default 10K (seed-42 prefix shared across sizes, so first
   **Push sanity**: commit 3aef806 is on local main, NOT pushed (8 retries all failed). If GFW window reopens, push manually with git push origin main.
   Files changed this turn: fraud-risk-engine/app/api.py (+13/-2), fraud-risk-engine/tests/test_medgraph.py (+3/-1), graph_chain.tiger.md (3 B: updated, 1 new).
 
+- 2026-07-25 17:23 — Loop fix-medgraph-stream-overflow (screenshot-driven bug report).
+  **Symptom (screenshot)**: MedGraph page in fraud-risk-engine frontend shows "Error - Stream disconnected - Is the server running?"
+  **Root cause**: `/api/medgraph/stream` endpoint yielded the entire D3 graph (patients + nodes + edges) as a single `data:` line in the `done` SSE event. At cap=10K (the default), this was 24.3 MB raw JSON — well above the browser's per-message cap on EventSource (typically 1-2 MB). Browser fires `error` before parsing finishes; frontend cannot distinguish "stream failed" from "payload too big".
+  **Probe**: per-byte SSE probe showed first byte at 0.24s, all 6 progress events at 0.24-2.87s, then 0.51s silence before `event: done` at 3.38s — the silence is the 24 MB JSON being prepared/buffered. The browser EventSource trips on the size, not the timing.
+  **Fix**: split the stream + fetch into two requests. (1) Server: stream now emits progress + a small `done` payload (658 chars) with `{ok, source, seed, fetch_url, stats}`. The stream is now a progress channel only. (2) Frontend: on `done`, parse the metadata and `await fetch(fetch_url)` to download the full data via the existing `/api/medgraph/sample` endpoint. (3) Added `print([medgraph/stream] done n_patients=... cap=... fetch_url=...)` 埋点 so the user can see stream hits in the backend console.
+  **Verification**:
+    - Stream probe: 1.82s total, done payload 658 chars (was 24.3 MB), 36,000x reduction.
+    - fetch_url returns 45 MB JSON with patients=20000, nodes=147160, edges=343329 — same shape as before, no data loss.
+    - Full test suite: 219 tests pass in 58s, no regressions.
+    - tsc --noEmit: no NEW errors in MedGraphView.tsx (pre-existing D3 type errors at lines 167 and 736 unchanged).
+  **Files changed**: fraud-risk-engine/app/api.py (stream endpoint rewritten), fraud-risk-engine/frontend/src/pages/MedGraphView.tsx (done handler async with fetch).
+  **Awaiting decision**: end-of-stream contract change is a wire-format change. Old clients reading `payload` as a JSON string would now get `{ok, source, seed, fetch_url, stats}` instead. But this is the only consumer (the React frontend in the same repo), so I refactored both sides. No third-party API consumers documented.
+

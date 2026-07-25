@@ -622,14 +622,39 @@ export function MedGraphView() {
       setProgress(d.progress);
     });
 
-    es.addEventListener('done', (e: MessageEvent) => {
-      const d = JSON.parse(e.data) as { progress: number; payload: string };
-      setProgress(100);
-      setProgressStage('Complete');
-      setData(JSON.parse(d.payload) as MedGraphAPIResponse);
-      setLoading(false);
-      es.close();
-      esRef.current = null;
+    es.addEventListener('done', async (e: MessageEvent) => {
+      // Streamer's done payload is small: {ok, source, seed, fetch_url, stats}.
+      // The full D3 graph (patients + nodes + edges) is fetched via the
+      // existing /api/medgraph/sample endpoint so the response stays under
+      // the browser's per-message cap on EventSource.
+      const meta = JSON.parse(e.data) as {
+        progress: number;
+        payload: {
+          ok: boolean;
+          source: string;
+          seed: number;
+          fetch_url: string;
+          stats: MedGraphAPIResponse['stats'];
+        };
+      };
+      const fetchUrl = meta.payload.fetch_url;
+      try {
+        const r = await fetch(fetchUrl);
+        if (!r.ok) throw new Error(`HTTP ${r.status}`);
+        const full = (await r.json()) as MedGraphAPIResponse;
+        setProgress(100);
+        setProgressStage('Complete');
+        setData(full);
+      } catch (err) {
+        // Surface the fetch failure distinctly from a stream disconnect so the
+        // user can tell which side failed.
+        const msg = err instanceof Error ? err.message : String(err);
+        setError(`Data fetch failed (${fetchUrl}): ${msg}`);
+      } finally {
+        setLoading(false);
+        es.close();
+        esRef.current = null;
+      }
     });
 
     es.addEventListener('error', () => {

@@ -701,10 +701,18 @@ def register_routes(app: FastAPI, settings: Settings) -> None:
                 yield emit("Serialising JSON…", 97)
                 await asyncio.sleep(0)
 
+                # The full D3 graph (patients + nodes + edges) can be 20+ MB at
+                # cap=10K, which exceeds the per-message cap of EventSource on
+                # most browsers and causes the stream to disconnect before the
+                # payload is parsed. The stream is now a progress channel only;
+                # the actual data is fetched via a regular GET on the existing
+                # /api/medgraph/sample endpoint.
+                fetch_url = f"/api/medgraph/sample?n_patients={n_patients}&seed={seed}"
                 body = {
                     "ok": True,
                     "source": "Synthea MedGraph (synthetic)",
                     "seed": seed,
+                    "fetch_url": fetch_url,
                     "stats": {
                         "patient_count": n_patients,
                         "encounter_count": enc_total,
@@ -716,15 +724,16 @@ def register_routes(app: FastAPI, settings: Settings) -> None:
                         "condition_distribution": cond_dist,
                         "rendered_count": cap,
                     },
-                    "patients": [
-                        {"id": p.patient_id, "name": f"{p.first_name} {p.last_name}",
-                         "gender": p.gender, "race": p.race, "city": p.city,
-                         "encounter_count": len(p.encounter_ids), "condition_count": len(p.condition_ids)}
-                        for p in g.patients
-                    ],
-                    "nodes": nodes,
-                    "edges": edges,
                 }
+
+                # 埋点: log each completion so the user can see stream hits in the
+                # backend console. Includes the cap so they can tell when the
+                # sample-side regen is going to be expensive.
+                print(
+                    f"[medgraph/stream] done n_patients={n_patients} "
+                    f"cap={cap} fetch_url={fetch_url}",
+                    flush=True,
+                )
 
                 yield emit("Complete", 100, done=True, body=body)
 
