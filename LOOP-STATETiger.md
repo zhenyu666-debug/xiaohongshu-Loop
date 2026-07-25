@@ -918,3 +918,17 @@ pm run dev from get_jobs/?). Until those are confirmed I
   Files changed this turn: graph_chain.tiger.md (+3 B: entries in §5).
   Won't restart sidecars without correct launcher paths. Won't touch B:docker-daemon from sandbox.
 
+- 2026-07-25 08:09 — Loop fix-all-blockers (session 2): closed 1 B:, partial 1 B:, added 1 new B: (gfw-push-active).
+  **B:test-medgraph-hang** [RESOLVED commit 3aef806] Root cause = pp/api.py:741 hard-coded gen_medgraph(n_patients=2_000_000, seed=42) in /api/medgraph/patient/{id}. Fix = added 
+_patients query param, default 10K (seed-42 prefix shared across sizes, so first 10K IDs match between 10K and 2M runs). Test verification: 7/7 medgraph in 3.30s; full suite 219 tests in 49s, no ignores needed.
+  **B:sidecar-restart** [PARTIAL → RESOLVED-LOCAL] Backend stayed dead until this session. Brought up using python -m uvicorn app:app --host 0.0.0.0 --port 8888 with TG_HOST=127.0.0.1 TG_RESTPP_PORT=19999 (so healthcheck fails fast). PID 37296. /api/health returns 200 with tigergraph:unreachable as expected. Frontend vite (PID 24936) on :5173 already up. Tunnel still down — public sharing blocked on user-side serveo restart.
+  **B:cli-1 / B:gitignore-spurious** unchanged from yesterday.
+  **B:gfw-push** appears to have REGRESSED: 8 attempts at 59-110s backoff all failed with identical 21s connection-reset errors. Worse than the 2026-07-21 baseline. Local commit 3aef806 is on main but cannot reach origin. New B: added: B:gfw-push-active to capture the degraded window state.
+  **Sidecar state inventory (vs graph entry which was stale)**
+    - xiaohongshu-saas uvicorn on :8080 (PID 43568) — up, running main.py. Not :8888 as graph said.
+    - raud-risk-engine frontend vite on :5173 (PID 24936) — up, from raud-risk-engine/frontend (not web/ as graph said).
+    - raud-risk-engine backend uvicorn on :8888 (PID 37296) — up, started this session, this is the new piece.
+  **AGENTS.md staleness confirmed**: python is C:\Python311 not C:\Python313; frontend is raud-risk-engine/frontend not web/. The graph entry's :8888 backend claim matched mental model but actual port was different on xiaohongshu-saas. Worth a doc refresh next session.
+  **Push sanity**: commit 3aef806 is on local main, NOT pushed (8 retries all failed). If GFW window reopens, push manually with git push origin main.
+  Files changed this turn: fraud-risk-engine/app/api.py (+13/-2), fraud-risk-engine/tests/test_medgraph.py (+3/-1), graph_chain.tiger.md (3 B: updated, 1 new).
+
