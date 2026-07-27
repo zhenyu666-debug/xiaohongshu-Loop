@@ -116,7 +116,6 @@ launcher.py
 run_pw.py
 test_subprocess.py
 test_412.py
-test_runner.py
 _html_snippet.txt
 _test_*.txt
 *.html.bak

@@ -627,34 +627,51 @@ export function MedGraphView() {
       // The full D3 graph (patients + nodes + edges) is fetched via the
       // existing /api/medgraph/sample endpoint so the response stays under
       // the browser's per-message cap on EventSource.
+      //
+      // Fallback: if the server is still on the old contract (where 'payload'
+      // was the entire MedGraphAPIResponse as a JSON string), use it directly.
+      // This keeps the page working across a hot-reload that lands before the
+      // backend has been restarted with the new contract.
       const meta = JSON.parse(e.data) as {
         progress: number;
-        payload: {
-          ok: boolean;
-          source: string;
-          seed: number;
-          fetch_url: string;
-          stats: MedGraphAPIResponse['stats'];
-        };
+        payload: unknown;
       };
-      const fetchUrl = meta.payload.fetch_url;
-      try {
-        const r = await fetch(fetchUrl);
-        if (!r.ok) throw new Error(`HTTP ${r.status}`);
-        const full = (await r.json()) as MedGraphAPIResponse;
+      let fullData: MedGraphAPIResponse | null = null;
+      let fetchUrl = '';
+      if (typeof meta.payload === 'string') {
+        // Legacy contract: payload is the full JSON graph as a string.
+        try {
+          fullData = JSON.parse(meta.payload) as MedGraphAPIResponse;
+        } catch (err) {
+          const msg = err instanceof Error ? err.message : String(err);
+          setError(`Stream payload parse failed: ${msg}`);
+        }
+      } else if (meta.payload && typeof meta.payload === 'object') {
+        const payload = meta.payload as { fetch_url?: string };
+        fetchUrl = payload.fetch_url ?? '';
+        if (fetchUrl) {
+          try {
+            const r = await fetch(fetchUrl);
+            if (!r.ok) throw new Error(`HTTP ${r.status}`);
+            fullData = (await r.json()) as MedGraphAPIResponse;
+          } catch (err) {
+            const msg = err instanceof Error ? err.message : String(err);
+            setError(`Data fetch failed (${fetchUrl}): ${msg}`);
+          }
+        } else {
+          setError('Stream done but payload had no fetch_url');
+        }
+      } else {
+        setError('Stream done payload was unexpected shape');
+      }
+      if (fullData) {
         setProgress(100);
         setProgressStage('Complete');
-        setData(full);
-      } catch (err) {
-        // Surface the fetch failure distinctly from a stream disconnect so the
-        // user can tell which side failed.
-        const msg = err instanceof Error ? err.message : String(err);
-        setError(`Data fetch failed (${fetchUrl}): ${msg}`);
-      } finally {
-        setLoading(false);
-        es.close();
-        esRef.current = null;
+        setData(fullData);
       }
+      setLoading(false);
+      es.close();
+      esRef.current = null;
     });
 
     es.addEventListener('error', () => {
